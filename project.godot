@@ -1,0 +1,54 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[animation]
+
+compatibility/default_parent_skeleton_in_mesh_instance_3d=true
+
+[application]
+
+config/name="Darwine"
+config/version="0.6"
+run/main_scene="res://splash_screen.tscn"
+config/features=PackedStringArray("4.7", "Mobile")
+config/icon="res://icon.svg"
+config/release_stage="Alpha"
+
+[autoload]
+
+DeckManager="*res://scripts/deck_manager.gd"
+ProfileManager="*res://scripts/profile_manager.gd"
+SteamManager="*res://scripts/steam_manager.gd"
+NetworkManager="*res://scripts/network_manager.gd"
+SceneTransition="*res://scripts/scene_transition.gd"
+SettingsManager="*res://scripts/settings_manager.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[internationalization]
+
+locale/translations=PackedStringArray("res://localization/ui.en.translation", "res://localization/ui.de.translation", "res://localization/ui.fr.translation", "res://localization/ui.it.translation", "res://localization/ui.es.translation", "res://localization/ui.tr.translation", "res://localization/cards.en.translation", "res://localization/cards.de.translation", "res://localization/cards.fr.translation", "res://localization/cards.it.translation", "res://localization/cards.es.translation", "res://localization/cards.tr.translation", "res://localization/card_descriptions.en.translation", "res://localization/card_descriptions.de.translation", "res://localization/card_descriptions.fr.translation", "res://localization/card_descriptions.it.translation", "res://localization/card_descriptions.es.translation", "res://localization/card_descriptions.tr.translation", "res://localization/gameplay.en.translation", "res://localization/gameplay.de.translation", "res://localization/gameplay.fr.translation", "res://localization/gameplay.it.translation", "res://localization/gameplay.es.translation", "res://localization/gameplay.tr.translation", "res://localization/tutorial.en.translation", "res://localization/tutorial.de.translation", "res://localization/tutorial.fr.translation", "res://localization/tutorial.it.translation", "res://localization/tutorial.es.translation", "res://localization/tutorial.tr.translation", "res://localization/profile.en.translation", "res://localization/profile.de.translation", "res://localization/profile.fr.translation", "res://localization/profile.it.translation", "res://localization/profile.es.translation", "res://localization/profile.tr.translation", "res://localization/decks.en.translation", "res://localization/decks.de.translation", "res://localization/decks.fr.translation", "res://localization/decks.it.translation", "res://localization/decks.es.translation", "res://localization/decks.tr.translation")
+
+[rendering]
+
+renderer/rendering_method="mobile"
+textures/vram_compression/import_etc2_astc=true
+
+[steam]
+
+initialization/app_data/app_id=480
+integration/cloud_profiles=true
+integration/enabled=true
+integration/public_lobbies=true

@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://ppb80tuhsbkw"
+
+[deps]
+
+files=["res://localization/tutorial.en.translation", "res://localization/tutorial.de.translation", "res://localization/tutorial.fr.translation", "res://localization/tutorial.it.translation", "res://localization/tutorial.es.translation", "res://localization/tutorial.tr.translation"]
+
+source_file="res://localization/tutorial.csv"
+dest_files=["res://localization/tutorial.en.translation", "res://localization/tutorial.de.translation", "res://localization/tutorial.fr.translation", "res://localization/tutorial.it.translation", "res://localization/tutorial.es.translation", "res://localization/tutorial.tr.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

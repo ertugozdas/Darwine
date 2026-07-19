@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://b6vyynx84sfmo"
+
+[deps]
+
+files=["res://localization/decks.en.translation", "res://localization/decks.de.translation", "res://localization/decks.fr.translation", "res://localization/decks.it.translation", "res://localization/decks.es.translation", "res://localization/decks.tr.translation"]
+
+source_file="res://localization/decks.csv"
+dest_files=["res://localization/decks.en.translation", "res://localization/decks.de.translation", "res://localization/decks.fr.translation", "res://localization/decks.it.translation", "res://localization/decks.es.translation", "res://localization/decks.tr.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

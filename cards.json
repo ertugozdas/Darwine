@@ -1,0 +1,9 @@
+{
+  "card_data_files": {
+	"heroes": "res://data/cards/heroes.json",
+	"settlements": "res://data/cards/settlements.json",
+	"special_powers": "res://data/cards/special_powers.json",
+	"upgrades": "res://data/cards/upgrades.json",
+	"effects": "res://data/cards/effects.json"
+  }
+}

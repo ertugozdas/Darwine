@@ -1,0 +1,12 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+/dist/
+
+# Local machine and development-only files
+.DS_Store
+steam_appid.txt
+.env
+.env.*
+!.env.example
+*.log

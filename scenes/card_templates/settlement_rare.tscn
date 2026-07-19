@@ -1,0 +1,307 @@
+[gd_scene format=3 uid="uid://dmdj3uvlt146v"]
+
+[ext_resource type="Script" uid="uid://y3f3pb262vrg" path="res://scripts/settlement_card.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://images/cards/templates/settlement_frame.png" id="2_bg"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_card"]
+bg_color = Color(0.14, 0.11, 0.1, 1)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.2, 0.5, 0.75, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+shadow_color = Color(0, 0, 0, 0.35)
+shadow_size = 6
+shadow_offset = Vector2(0, 4)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_art"]
+bg_color = Color(0.06, 0.05, 0.04, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.2, 0.5, 0.75, 0.75)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_badge"]
+
+[node name="SettlementRareTemplate" type="Control" unique_id=1278039481]
+custom_minimum_size = Vector2(200, 280)
+layout_mode = 3
+anchors_preset = 0
+offset_right = 200.0
+offset_bottom = 280.0
+script = ExtResource("1_script")
+attack = 1
+card_name = "Yerleşim İsmi"
+card_description = "Yerleşim açıklaması buraya gelecek."
+rarity = 1
+
+[node name="CardFrame" type="Panel" parent="." unique_id=1176420748]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+
+[node name="TemplateBackground" type="TextureRect" parent="CardFrame" unique_id=1518419416]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("2_bg")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="TypeLabel" type="Label" parent="CardFrame" unique_id=83968687]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.08
+anchor_top = 0.03
+anchor_right = 0.58
+anchor_bottom = 0.1
+mouse_filter = 1
+theme_override_colors/font_color = Color(0.98, 0.96, 0.9, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.95)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_constants/shadow_outline_size = 2
+theme_override_font_sizes/font_size = 11
+text = "Yerleşim"
+vertical_alignment = 1
+
+[node name="RarityLabel" type="Label" parent="CardFrame" unique_id=411459557]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.58
+anchor_top = 0.03
+anchor_right = 0.92
+anchor_bottom = 0.1
+mouse_filter = 1
+theme_override_colors/font_color = Color(0.98, 0.96, 0.9, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.95)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_constants/shadow_outline_size = 2
+theme_override_font_sizes/font_size = 11
+text = "RARE"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="ArtBox" type="Panel" parent="CardFrame" unique_id=972894154]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.08
+anchor_top = 0.11
+anchor_right = 0.92
+anchor_bottom = 0.52
+mouse_filter = 1
+theme_override_styles/panel = SubResource("StyleBoxFlat_art")
+
+[node name="ArtRect" type="TextureRect" parent="CardFrame" unique_id=2084540169]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.08
+anchor_top = 0.11
+anchor_right = 0.92
+anchor_bottom = 0.52
+expand_mode = 1
+stretch_mode = 6
+
+[node name="ArtPlaceholderLabel" type="Label" parent="CardFrame" unique_id=35036952]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.08
+anchor_top = 0.11
+anchor_right = 0.92
+anchor_bottom = 0.52
+offset_left = 8.0
+offset_top = -12.799999
+offset_right = -2.0
+offset_bottom = -1.5999908
+mouse_filter = 1
+theme_override_colors/font_color = Color(0.98, 0.96, 0.9, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.95)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_constants/shadow_outline_size = 2
+theme_override_font_sizes/font_size = 13
+text = "Kart Resmi"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="GoldBadge" type="Panel" parent="CardFrame" unique_id=1685743968]
+custom_minimum_size = Vector2(28, 29)
+layout_mode = 1
+offset_left = 15.0
+offset_top = 13.0
+offset_right = 43.0
+offset_bottom = 42.0
+mouse_filter = 1
+theme_override_styles/panel = SubResource("StyleBoxEmpty_badge")
+
+[node name="GoldLabel" type="Label" parent="CardFrame/GoldBadge" unique_id=1636199190]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -2.0
+offset_top = -3.0
+offset_right = -2.0
+offset_bottom = -3.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+theme_override_colors/font_color = Color(0.98, 0.96, 0.9, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.95)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_constants/shadow_outline_size = 2
+theme_override_font_sizes/font_size = 13
+text = "1"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="RuntimeStateRail" type="Panel" parent="CardFrame"]
+visible = false
+layout_mode = 0
+offset_left = 20.0
+offset_top = 125.0
+offset_right = 180.0
+offset_bottom = 145.0
+mouse_filter = 2
+
+[node name="NameLabel" type="Label" parent="CardFrame" unique_id=560260928]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.08
+anchor_top = 0.55
+anchor_right = 0.92
+anchor_bottom = 0.64
+offset_left = 42.0
+offset_top = 11.0
+offset_right = -16.0
+offset_bottom = 2.800003
+mouse_filter = 1
+theme_override_colors/font_color = Color(0.98, 0.96, 0.9, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.95)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_constants/shadow_outline_size = 2
+theme_override_font_sizes/font_size = 11
+text = "Kahraman İsmi"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="DescLabel" type="Label" parent="CardFrame" unique_id=963548005]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.08
+anchor_top = 0.66
+anchor_right = 0.92
+anchor_bottom = 0.8
+offset_left = 7.0
+offset_top = 8.199997
+offset_right = -7.0
+offset_bottom = 5.0
+mouse_filter = 1
+theme_override_colors/font_color = Color(0.98, 0.96, 0.9, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.95)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_constants/shadow_outline_size = 2
+theme_override_font_sizes/font_size = 10
+text = "Yerleşim açıklaması buraya gelecek."
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="StatsContainer" type="HBoxContainer" parent="CardFrame" unique_id=368752017]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.06
+anchor_top = 0.83
+anchor_right = 0.94
+anchor_bottom = 0.95
+offset_top = -41.399994
+offset_bottom = -41.399994
+theme_override_constants/separation = 6
+alignment = 1
+
+[node name="AttackBadge" type="Panel" parent="CardFrame" unique_id=1975493235]
+custom_minimum_size = Vector2(25, 15)
+layout_mode = 1
+offset_left = 45.0
+offset_top = 151.0
+offset_right = 70.0
+offset_bottom = 166.0
+mouse_filter = 1
+theme_override_styles/panel = SubResource("StyleBoxEmpty_badge")
+
+[node name="AttackLabel" type="Label" parent="CardFrame/AttackBadge" unique_id=1794583696]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -9.0
+offset_top = -19.0
+offset_bottom = -18.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+theme_override_colors/font_color = Color(0.98, 0.96, 0.9, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.95)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_constants/shadow_outline_size = 2
+theme_override_font_sizes/font_size = 11
+text = "Saldırı"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="HealthBadge" type="Panel" parent="CardFrame" unique_id=292364927]
+custom_minimum_size = Vector2(24, 17)
+layout_mode = 1
+offset_left = 151.0
+offset_top = 150.0
+offset_right = 175.0
+offset_bottom = 167.0
+mouse_filter = 1
+theme_override_styles/panel = SubResource("StyleBoxEmpty_badge")
+
+[node name="HealthLabel" type="Label" parent="CardFrame/HealthBadge" unique_id=1359148898]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -5.0
+offset_top = -18.0
+offset_right = -5.0
+offset_bottom = -18.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+theme_override_colors/font_color = Color(0.98, 0.96, 0.9, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.95)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_constants/shadow_outline_size = 2
+theme_override_font_sizes/font_size = 11
+text = "Can"
+horizontal_alignment = 1
+vertical_alignment = 1

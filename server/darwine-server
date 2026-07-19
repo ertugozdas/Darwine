@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+SERVER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENGINE="$SERVER_DIR/godot"
+PACK="$SERVER_DIR/darwine-server.pck"
+PORT="${PORT:-7777}"
+PUBLIC_IP="${PUBLIC_IP:-}"
+RULESET="${RULESET:-siege}"
+
+fail() {
+	printf 'Hata: %s\n' "$1" >&2
+	exit 1
+}
+
+detect_public_ip() {
+	local detected=""
+	if command -v curl >/dev/null 2>&1; then
+		detected="$(curl -4fsS --retry 2 --connect-timeout 5 --max-time 12 https://api.ipify.org || true)"
+	elif command -v wget >/dev/null 2>&1; then
+		detected="$(wget -4qO- --timeout=12 https://api.ipify.org || true)"
+	fi
+	printf '%s' "$detected"
+}
+
+[[ -x "$ENGINE" ]] || fail "Godot sunucu çalıştırıcısı bulunamadı: $ENGINE"
+[[ -f "$PACK" ]] || fail "Oyun sunucu paketi bulunamadı: $PACK"
+
+if [[ -z "$PUBLIC_IP" ]]; then
+	PUBLIC_IP="$(detect_public_ip)"
+fi
+PUBLIC_IP="${PUBLIC_IP//$'\r'/}"
+PUBLIC_IP="${PUBLIC_IP//$'\n'/}"
+[[ -n "$PUBLIC_IP" ]] || fail "Genel IPv4 adresi bulunamadı. PUBLIC_IP=1.2.3.4 ./darwine-server şeklinde başlatın."
+
+SERVER_ARGS=(--server --public-ip "$PUBLIC_IP" --port "$PORT" --ruleset "$RULESET")
+if [[ -n "${SECRET:-}" ]]; then
+	SERVER_ARGS+=(--secret "$SECRET")
+fi
+
+printf 'Darwine dedicated sunucusu başlatılıyor (UDP %s, public IP %s, ruleset %s)...\n' "$PORT" "$PUBLIC_IP" "$RULESET"
+exec "$ENGINE" --headless --main-pack "$PACK" -- "${SERVER_ARGS[@]}" "$@"

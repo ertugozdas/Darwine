@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://dx7vmh713vpd7"
+
+[deps]
+
+files=["res://localization/card_descriptions.en.translation", "res://localization/card_descriptions.de.translation", "res://localization/card_descriptions.fr.translation", "res://localization/card_descriptions.it.translation", "res://localization/card_descriptions.es.translation", "res://localization/card_descriptions.tr.translation"]
+
+source_file="res://localization/card_descriptions.csv"
+dest_files=["res://localization/card_descriptions.en.translation", "res://localization/card_descriptions.de.translation", "res://localization/card_descriptions.fr.translation", "res://localization/card_descriptions.it.translation", "res://localization/card_descriptions.es.translation", "res://localization/card_descriptions.tr.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

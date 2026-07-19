@@ -1,0 +1,13 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/effect_card.gd" id="1_script"]
+
+[node name="EffectCommonTemplate" type="Control"]
+custom_minimum_size = Vector2(200, 280)
+offset_right = 200.0
+offset_bottom = 280.0
+script = ExtResource("1_script")
+card_name = "Etki Kartı"
+card_description = "Maç boyunca etkin kalan pasif kural."
+energy_cost = 0
+is_draggable = false

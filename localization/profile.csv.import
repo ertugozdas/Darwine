@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://dox8iqxb8rpds"
+
+[deps]
+
+files=["res://localization/profile.en.translation", "res://localization/profile.de.translation", "res://localization/profile.fr.translation", "res://localization/profile.it.translation", "res://localization/profile.es.translation", "res://localization/profile.tr.translation"]
+
+source_file="res://localization/profile.csv"
+dest_files=["res://localization/profile.en.translation", "res://localization/profile.de.translation", "res://localization/profile.fr.translation", "res://localization/profile.it.translation", "res://localization/profile.es.translation", "res://localization/profile.tr.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

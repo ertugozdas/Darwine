@@ -1,0 +1,121 @@
+{
+  "cards": [
+    {
+      "id": "yapi_ustalari",
+      "name": "Yapı Ustaları",
+      "rarity": "COMMON",
+      "description": "Her kendi turunda oynadığın ilk Yerleşkenin maksimum ve mevcut Canı 2 artar.",
+      "effect_id": "effect_building_masters",
+      "image_url": "res://images/skills/guclendirilmis_temel.png",
+      "deck_enabled": false
+    },
+    {
+      "id": "saha_hekimleri",
+      "name": "Saha Hekimleri",
+      "rarity": "COMMON",
+      "description": "Kendi turunun sonunda Merkez dışındaki en yaralı dost kart 1 Can iyileşir.",
+      "effect_id": "effect_field_medics",
+      "image_url": "res://images/spells/kutsal_isik.png",
+      "deck_enabled": false
+    },
+    {
+      "id": "kanat_manevrasi",
+      "name": "Kanat Manevrası",
+      "rarity": "COMMON",
+      "description": "Her kendi turundaki ilk yasal kart hareketi 0 Enerjiye mal olur.",
+      "effect_id": "effect_flanking_maneuver",
+      "image_url": "res://images/skills/hiz_egitimi.png",
+      "deck_enabled": false
+    },
+    {
+      "id": "oncu_doktrini",
+      "name": "Öncü Doktrini",
+      "rarity": "RARE",
+      "description": "Her kendi turunda oynadığın ilk Kahramanın Enerji maliyeti 1 azalır; en az 1.",
+      "effect_id": "effect_vanguard_doctrine",
+      "image_url": "res://images/heroes/sovalye.webp",
+      "deck_enabled": false
+    },
+    {
+      "id": "gizli_cephanelik",
+      "name": "Gizli Cephanelik",
+      "rarity": "RARE",
+      "description": "Her kendi turunda oynadığın ilk Büyü 1 daha az Enerjiye mal olur; en az 1.",
+      "effect_id": "effect_hidden_arsenal",
+      "image_url": "res://images/skills/gozetleme_duzenegi.png",
+      "deck_enabled": false
+    },
+    {
+      "id": "koruyucu_yemin",
+      "name": "Koruyucu Yemin",
+      "rarity": "RARE",
+      "description": "Tur başlangıcında Merkez dışındaki en yaralı korumasız dost karta Korumalı 1 verilir.",
+      "effect_id": "effect_protective_oath",
+      "image_url": "res://images/spells/koruyucu_muhur.png",
+      "deck_enabled": false
+    },
+    {
+      "id": "kusatma_plani",
+      "name": "Kuşatma Planı",
+      "rarity": "EPIC",
+      "description": "Kendi Çatışma fazındaki ilk uygun normal saldırın Yapı veya Merkeze 1 ek hasar verir.",
+      "effect_id": "effect_siege_plan",
+      "image_url": "res://images/skills/kusatma_muhimmati.png",
+      "deck_enabled": false
+    },
+    {
+      "id": "dovme_ocagi",
+      "name": "Dövme Ocağı",
+      "rarity": "EPIC",
+      "description": "Her kendi turunda çözümlenen ilk Beceri, hedefin maksimum ve mevcut Canını 1 artırır.",
+      "effect_id": "effect_forge",
+      "image_url": "res://images/skills/celik_kalkan.png",
+      "deck_enabled": false
+    },
+    {
+      "id": "ikmal_hatti",
+      "name": "İkmal Hattı",
+      "rarity": "EPIC",
+      "description": "Turundaki ilk Enerji harcayan yasal hamle Enerjini 0 yaparsa ve elinde yer varsa 1 kart çek.",
+      "effect_id": "effect_supply_line",
+      "image_url": "res://images/spells/ikmal_emri.png",
+      "deck_enabled": false
+    },
+    {
+      "id": "son_direnis",
+      "name": "Son Direniş",
+      "rarity": "LEGENDARY",
+      "description": "Rakibin her turunda Merkez Binana gelen ilk pozitif hasar 1 azalır.",
+      "effect_id": "effect_last_stand",
+      "image_url": "res://images/settlements/tas_sur.png",
+      "deck_enabled": false
+    },
+    {
+      "id": "muhafiz_nobeti",
+      "name": "Muhafız Nöbeti",
+      "rarity": "RARE",
+      "description": "Her kendi turunda sahaya oynadığın ilk Kahraman Korumalı 2 kazanır.",
+      "effect_id": "effect_guard_watch",
+      "image_url": "res://images/heroes/demir_tac_muhafizi.png",
+      "deck_enabled": false
+    },
+    {
+      "id": "usta_zanaatkarlar",
+      "name": "Usta Zanaatkârlar",
+      "rarity": "EPIC",
+      "description": "Her kendi turunda oynadığın ilk Yapının Enerji maliyeti 1 azalır; en az 1.",
+      "effect_id": "effect_master_artisans",
+      "image_url": "res://images/settlements/kizil_firini.png",
+      "deck_enabled": false
+    },
+    {
+      "id": "ilkel_uyum",
+      "name": "İlkel Uyum",
+      "rarity": "LEGENDARY",
+      "description": "Kendi Tur Başlangıcında en az iki farklı koridorda dost Kahramanın varsa 1 geçici Enerji kazanır ve Merkez dışındaki en yaralı dost kart 1 Can iyileşir.",
+      "effect_id": "effect_primal_harmony",
+      "image_url": "res://images/effects/ilkel_uyum.png",
+      "deck_enabled": false
+    }
+  ]
+}
