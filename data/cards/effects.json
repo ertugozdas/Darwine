@@ -76,7 +76,7 @@
       "id": "ikmal_hatti",
       "name": "İkmal Hattı",
       "rarity": "EPIC",
-      "description": "Turundaki ilk Enerji harcayan yasal hamle Enerjini 0 yaparsa ve elinde yer varsa 1 kart çek.",
+      "description": "Turunda Enerjini 0 yapan ilk yasal hamleden sonra elinde yer varsa 1 kart çekersin (turda bir kez).",
       "effect_id": "effect_supply_line",
       "image_url": "res://images/spells/ikmal_emri.png",
       "deck_enabled": false

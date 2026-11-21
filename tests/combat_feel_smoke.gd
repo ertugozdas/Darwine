@@ -62,7 +62,7 @@ func _run() -> void:
 		_expect(checkbox.get_theme_stylebox("hover") is StyleBoxEmpty, "Checkbox hover yüzeyi siyah bir blok çizmemeli")
 		checkbox.mouse_entered.emit()
 		var hover_panel_style := battlefield._auto_attack_panel.get_theme_stylebox("panel")
-		_expect(hover_panel_style is StyleBoxTexture, "Otomatik Saldırı hover durumunda dövme buton yüzeyi korunmalı")
+		_expect(hover_panel_style is StyleBoxFlat or hover_panel_style is StyleBoxTexture, "Otomatik Saldırı hover durumunda dövme yüzey korunmalı")
 		checkbox.mouse_exited.emit()
 
 	var feedback := battlefield._feedback_layer as BattlefieldFeedbackLayer
@@ -78,7 +78,7 @@ func _run() -> void:
 	var target_slot := battlefield.get_node("Player2Zone/Grid/Slot_F1") as CardSlot
 	var target := HeroCard.new()
 	target.owner_id = 2
-	target.card_id = "gladiator"
+	target.card_id = "alev_duellocusu"
 	target_slot.add_child(target)
 	await process_frame
 	_expect(

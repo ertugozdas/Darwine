@@ -3,6 +3,7 @@ class_name DeckBuilderPanel extends Control
 signal closed
 
 const UI := preload("res://scripts/dark_fantasy_ui.gd")
+const DECK_ADVISOR_PANEL_SCRIPT := preload("res://scripts/deck_advisor_panel.gd")
 const TYPE_ORDER := ["heroes", "settlements", "special_powers", "upgrades"]
 const TYPE_LABELS := {
 	"all": "Tüm Kartlar",
@@ -36,10 +37,18 @@ var _status_label: Label
 var _save_button: Button
 var _activate_button: Button
 var _delete_button: Button
+var _advisor_panel: Variant = null
+var _current_advice: Dictionary = {}
+var _preview_card_box: PanelContainer = null
+var _preview_art: TextureRect = null
+var _preview_name_label: Label = null
+var _preview_meta_label: Label = null
+var _preview_desc_label: Label = null
 
 
 func _ready() -> void:
 	name = "DeckBuilderOverlay"
+	theme = UI.create_theme()
 	z_index = 600
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -87,11 +96,15 @@ func get_selected_deck_id() -> String:
 	return _selected_deck_id
 
 
+func get_current_advice() -> Dictionary:
+	return _current_advice.duplicate(true)
+
+
 func _build_interface() -> void:
 	var dim := ColorRect.new()
 	dim.name = "DeckBuilderDim"
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	dim.color = Color(0.004, 0.005, 0.008, 0.93)
+	dim.color = Color(0.004, 0.005, 0.008, UI.MODAL_DIM_ALPHA)
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(dim)
 
@@ -252,11 +265,47 @@ func _build_collection_column() -> Control:
 	_collection_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_collection_list.add_theme_constant_override("separation", 5)
 	scroll.add_child(_collection_list)
+
+	_preview_card_box = PanelContainer.new()
+	_preview_card_box.name = "DeckCardPreviewBox"
+	_preview_card_box.custom_minimum_size.y = 84.0
+	_preview_card_box.add_theme_stylebox_override("panel", UI.inset_style(Color(0.032, 0.030, 0.032, 0.96), UI.BRASS, 5))
+	content.add_child(_preview_card_box)
+	var p_row := HBoxContainer.new()
+	p_row.add_theme_constant_override("separation", 10)
+	_preview_card_box.add_child(p_row)
+	_preview_art = TextureRect.new()
+	_preview_art.custom_minimum_size = Vector2(56.0, 68.0)
+	_preview_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_preview_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	p_row.add_child(_preview_art)
+	var p_copy := VBoxContainer.new()
+	p_copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	p_copy.add_theme_constant_override("separation", 2)
+	p_row.add_child(p_copy)
+	_preview_name_label = Label.new()
+	_preview_name_label.text = tr("Kart ayrıntısını görmek için üzerine gel")
+	_preview_name_label.add_theme_font_override("font", UI.DISPLAY_FONT)
+	_preview_name_label.add_theme_font_size_override("font_size", 13)
+	_preview_name_label.add_theme_color_override("font_color", UI.BRASS_BRIGHT)
+	p_copy.add_child(_preview_name_label)
+	_preview_meta_label = Label.new()
+	_preview_meta_label.add_theme_font_override("font", UI.BODY_BOLD_FONT)
+	_preview_meta_label.add_theme_font_size_override("font_size", 11)
+	_preview_meta_label.add_theme_color_override("font_color", UI.TEXT_MUTED)
+	p_copy.add_child(_preview_meta_label)
+	_preview_desc_label = Label.new()
+	_preview_desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_preview_desc_label.max_lines_visible = 2
+	_preview_desc_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_preview_desc_label.add_theme_font_size_override("font_size", 11)
+	_preview_desc_label.add_theme_color_override("font_color", UI.PARCHMENT)
+	p_copy.add_child(_preview_desc_label)
 	return panel
 
 
 func _build_current_deck_column() -> Control:
-	var panel := _column_panel("SEÇİLİ DESTE", 348.0)
+	var panel := _column_panel("SEÇİLİ DESTE", 390.0)
 	var content := panel.get_child(0) as VBoxContainer
 	_name_input = LineEdit.new()
 	_name_input.name = "DeckNameInput"
@@ -275,6 +324,9 @@ func _build_current_deck_column() -> Control:
 	_stats_label.add_theme_font_override("font", UI.BODY_BOLD_FONT)
 	_stats_label.add_theme_font_size_override("font_size", 12)
 	content.add_child(_stats_label)
+
+	_advisor_panel = DECK_ADVISOR_PANEL_SCRIPT.new()
+	content.add_child(_advisor_panel)
 
 	var scroll := ScrollContainer.new()
 	scroll.name = "CurrentDeckScroll"
@@ -409,23 +461,34 @@ func _build_collection_row(data: Dictionary) -> Control:
 	var card_id := str(data.get("id", ""))
 	var ref := {"card_type": card_type, "card_id": card_id}
 	var copies := _count_ref(_working_cards, ref)
+	var type_color := UI.get_card_type_color(card_type)
 	var panel := PanelContainer.new()
 	panel.name = "DeckPool_%s_%s" % [card_type, card_id]
-	panel.custom_minimum_size.y = 48.0
-	panel.add_theme_stylebox_override("panel", UI.inset_style(Color(0.026, 0.027, 0.030, 0.94), TYPE_COLORS.get(card_type, UI.BRASS), 4))
+	panel.custom_minimum_size.y = 50.0
+	panel.add_theme_stylebox_override("panel", UI.inset_style(Color(0.026, 0.027, 0.030, 0.95), type_color, 4))
+	panel.mouse_entered.connect(_show_deck_card_preview.bind(card_type, data))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	panel.add_child(row)
 	var cost := Label.new()
-	cost.text = str(data.get("energy_cost", 0))
-	cost.custom_minimum_size.x = 24.0
+	cost.text = str(int(data.get("energy_cost", 0)))
+	cost.custom_minimum_size.x = 22.0
 	cost.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	cost.add_theme_font_override("font", UI.BODY_BOLD_FONT)
+	cost.add_theme_font_override("font", UI.DISPLAY_FONT)
+	cost.add_theme_font_size_override("font_size", 15)
 	cost.add_theme_color_override("font_color", UI.BRASS_BRIGHT)
 	row.add_child(cost)
+	var thumb := TextureRect.new()
+	thumb.custom_minimum_size = Vector2(36.0, 36.0)
+	thumb.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	thumb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	var img_url := str(data.get("image_url", ""))
+	if not img_url.is_empty() and ResourceLoader.exists(img_url):
+		thumb.texture = load(img_url) as Texture2D
+	row.add_child(thumb)
 	var copy := VBoxContainer.new()
 	copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	copy.add_theme_constant_override("separation", 0)
+	copy.add_theme_constant_override("separation", 1)
 	row.add_child(copy)
 	var name_label := Label.new()
 	name_label.text = tr(str(data.get("name", "İsimsiz Kart")))
@@ -434,23 +497,77 @@ func _build_collection_row(data: Dictionary) -> Control:
 	name_label.add_theme_font_size_override("font_size", 13)
 	copy.add_child(name_label)
 	var type_label := Label.new()
-	type_label.text = "%s • %s" % [tr(TYPE_LABELS.get(card_type, card_type)), tr(str(data.get("rarity", "COMMON")).capitalize())]
-	type_label.add_theme_font_size_override("font_size", 10)
+	var stat_summary := _format_card_stat_summary(card_type, data)
+	var rarity_tr := tr(UI.get_rarity_label(str(data.get("rarity", "COMMON"))))
+	type_label.text = "%s • %s%s" % [
+		tr(UI.get_card_type_label(card_type)),
+		rarity_tr,
+		(" • %s" % stat_summary) if not stat_summary.is_empty() else "",
+	]
+	type_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	type_label.add_theme_font_size_override("font_size", 11)
 	type_label.add_theme_color_override("font_color", UI.TEXT_MUTED)
 	copy.add_child(type_label)
 	var count := Label.new()
 	count.text = "%d/%d" % [copies, GameRules.MAX_CARD_COPIES]
-	count.custom_minimum_size.x = 36.0
+	count.custom_minimum_size.x = 34.0
 	count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	count.add_theme_font_override("font", UI.BODY_BOLD_FONT)
 	count.add_theme_color_override("font_color", UI.PARCHMENT if copies > 0 else UI.TEXT_MUTED)
 	row.add_child(count)
-	var add_button := _small_button("Add_%s_%s" % [card_type, card_id], "+", TYPE_COLORS.get(card_type, UI.BRASS))
-	add_button.custom_minimum_size = Vector2(38.0, 34.0)
+	var add_button := _small_button("Add_%s_%s" % [card_type, card_id], "+", type_color)
+	add_button.custom_minimum_size = Vector2(34.0, 34.0)
 	add_button.disabled = copies >= GameRules.MAX_CARD_COPIES or _working_cards.size() >= GameRules.DECK_SIZE
 	add_button.pressed.connect(_add_card.bind(ref))
 	row.add_child(add_button)
 	return panel
+
+
+func _format_card_stat_summary(card_type: String, data: Dictionary) -> String:
+	match card_type:
+		"heroes":
+			return tr("S:%d Z:%d C:%d") % [
+				int(data.get("attack", 0)),
+				int(data.get("armor", 0)),
+				int(data.get("health", 0)),
+			]
+		"settlements":
+			var atk := int(data.get("attack", 0))
+			return (tr("S:%d C:%d") % [atk, int(data.get("health", 0))]) if atk > 0 else (tr("C:%d") % int(data.get("health", 0)))
+		"upgrades":
+			var parts: Array[String] = []
+			if int(data.get("bonus_attack", 0)) > 0:
+				parts.append(tr("+%dS") % int(data.get("bonus_attack", 0)))
+			if int(data.get("bonus_armor", 0)) > 0:
+				parts.append(tr("+%dZ") % int(data.get("bonus_armor", 0)))
+			if int(data.get("bonus_health", 0)) > 0:
+				parts.append(tr("+%dC") % int(data.get("bonus_health", 0)))
+			return " ".join(parts)
+		"special_powers":
+			return tr(str(data.get("power_type", "")))
+	return ""
+
+
+func _show_deck_card_preview(card_type: String, data: Dictionary) -> void:
+	if not _preview_card_box:
+		return
+	var type_color := UI.get_card_type_color(card_type)
+	_preview_card_box.add_theme_stylebox_override("panel", UI.inset_style(Color(0.032, 0.030, 0.034, 0.98), type_color, 5))
+	var img_url := str(data.get("image_url", ""))
+	if _preview_art:
+		_preview_art.texture = load(img_url) as Texture2D if not img_url.is_empty() and ResourceLoader.exists(img_url) else null
+	if _preview_name_label:
+		_preview_name_label.text = "%s  (%d E)" % [tr(str(data.get("name", ""))), int(data.get("energy_cost", 0))]
+	if _preview_meta_label:
+		var stat_str := _format_card_stat_summary(card_type, data)
+		_preview_meta_label.text = "%s • %s%s" % [
+			tr(UI.get_card_type_label(card_type)).to_upper(),
+			tr(UI.get_rarity_label(str(data.get("rarity", "COMMON")))).to_upper(),
+			(" • %s" % stat_str) if not stat_str.is_empty() else "",
+		]
+		_preview_meta_label.add_theme_color_override("font_color", type_color.lightened(0.28))
+	if _preview_desc_label:
+		_preview_desc_label.text = tr(str(data.get("description", "")))
 
 
 func _refresh_current_deck() -> void:
@@ -481,6 +598,9 @@ func _refresh_current_deck() -> void:
 		_current_list.add_child(_build_current_row(parts[0], parts[1], data, int(grouped[key])))
 
 	var stats: Dictionary = _deck_manager.get_deck_stats(_working_cards) if _deck_manager else {}
+	_current_advice = _deck_manager.get_deck_advice(_working_cards) if _deck_manager else {}
+	if _advisor_panel:
+		_advisor_panel.set_analysis(_current_advice)
 	var valid_count := _working_cards.size() == GameRules.DECK_SIZE
 	_stats_label.text = tr("%d/%d CARDS  •  ⚔ %d  ⌂ %d  ✦ %d  ⚒ %d  •  Avg. %.1f Energy") % [
 		int(stats.get("total", 0)), GameRules.DECK_SIZE,
@@ -498,18 +618,21 @@ func _refresh_current_deck() -> void:
 
 
 func _build_current_row(card_type: String, card_id: String, data: Dictionary, copies: int) -> Control:
+	var type_color := UI.get_card_type_color(card_type)
 	var panel := PanelContainer.new()
 	panel.name = "CurrentDeck_%s_%s" % [card_type, card_id]
-	panel.custom_minimum_size.y = 42.0
-	panel.add_theme_stylebox_override("panel", UI.inset_style(Color(0.024, 0.025, 0.028, 0.94), TYPE_COLORS.get(card_type, UI.BRASS), 4))
+	panel.custom_minimum_size.y = 40.0
+	panel.add_theme_stylebox_override("panel", UI.inset_style(Color(0.024, 0.025, 0.028, 0.95), type_color, 4))
+	panel.mouse_entered.connect(_show_deck_card_preview.bind(card_type, data))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 7)
 	panel.add_child(row)
 	var cost := Label.new()
-	cost.text = str(data.get("energy_cost", 0))
-	cost.custom_minimum_size.x = 22.0
+	cost.text = str(int(data.get("energy_cost", 0)))
+	cost.custom_minimum_size.x = 20.0
 	cost.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	cost.add_theme_font_override("font", UI.BODY_BOLD_FONT)
+	cost.add_theme_font_override("font", UI.DISPLAY_FONT)
+	cost.add_theme_font_size_override("font_size", 13)
 	cost.add_theme_color_override("font_color", UI.BRASS_BRIGHT)
 	row.add_child(cost)
 	var name_label := Label.new()
@@ -521,12 +644,12 @@ func _build_current_row(card_type: String, card_id: String, data: Dictionary, co
 	row.add_child(name_label)
 	var count := Label.new()
 	count.text = "×%d" % copies
-	count.custom_minimum_size.x = 30.0
+	count.custom_minimum_size.x = 28.0
 	count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	count.add_theme_font_override("font", UI.BODY_BOLD_FONT)
 	row.add_child(count)
 	var remove_button := _small_button("Remove_%s_%s" % [card_type, card_id], "−", UI.BLOOD, true)
-	remove_button.custom_minimum_size = Vector2(36.0, 32.0)
+	remove_button.custom_minimum_size = Vector2(32.0, 30.0)
 	remove_button.pressed.connect(_remove_card.bind({"card_type": card_type, "card_id": card_id}))
 	row.add_child(remove_button)
 	return panel

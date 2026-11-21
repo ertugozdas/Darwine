@@ -10,7 +10,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	_expect(FileAccess.file_exists("res://UI_KIT.md"), "UI kit kullanım rehberi bulunamadı")
+	_expect(FileAccess.file_exists("res://docs/UI_KIT.md"), "UI kit kullanım rehberi bulunamadı")
 	_expect(UI.BUTTON_TEXTURE != null, "Dokulu buton yüzeyi yüklenemedi")
 	_expect(UI.PANEL_TEXTURE != null, "Dokulu panel yüzeyi yüklenemedi")
 	_expect(UI.DISPLAY_FONT.has_char("İ".unicode_at(0)), "Cinzel fontunda Türkçe İ glifi bulunmalı")

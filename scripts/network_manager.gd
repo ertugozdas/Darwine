@@ -80,7 +80,9 @@ var _smoke_reconnect_accepted := false
 var _smoke_reconnect_peer_ready := false
 var _smoke_forced_game_over := false
 var _smoke_rematch_vote_sent := false
-var _smoke_host_mulligan_pending := false
+var _smoke_initial_turn_player_id := 0
+var _smoke_turn_handoff_host_logged := false
+var _smoke_turn_handoff_client_logged := false
 var _smoke_ready_generation_logged := 0
 var _smoke_snapshot_generation_logged := 0
 var _dedicated_boot_requested := false
@@ -535,13 +537,18 @@ func leave_network(return_to_menu: bool = true) -> void:
 
 
 func request_action(action: String, payload: Dictionary = {}) -> bool:
-	if _is_server or state != NetworkState.MATCH or not MatchSetup.is_multiplayer_client():
+	if state != NetworkState.MATCH or not MatchSetup.is_multiplayer_player():
 		return false
 	if _action_pending or action.is_empty() or _waiting_for_reconnect:
 		return false
+	if _is_server and (not _is_hosting_player or local_player_id not in GameRules.PLAYER_IDS):
+		return false
 	_action_pending = true
 	action_pending_changed.emit(true)
-	_submit_action.rpc_id(1, action, payload)
+	if _is_server:
+		call_deferred("_execute_local_host_action", action, payload.duplicate(true))
+	else:
+		_submit_action.rpc_id(1, action, payload)
 	return true
 
 
@@ -813,7 +820,24 @@ func _on_steam_join_requested(lobby_id: int, _inviter_steam_id: int) -> void:
 		return
 	var steam_manager := _get_steam_manager()
 	var suggested_name := str(steam_manager.call("get_persona_name")) if steam_manager else "Steam Komutanı"
-	join_steam_lobby(lobby_id, suggested_name)
+	var inviter_name := (
+		str(steam_manager.call("get_friend_persona_name", _inviter_steam_id))
+		if steam_manager and _inviter_steam_id > 0
+		else "Steam arkadaşın"
+	)
+	var join_error := join_steam_lobby(lobby_id, suggested_name)
+	if join_error != OK:
+		_set_status("%s tarafından gönderilen Steam davetine katılınamadı." % inviter_name, true)
+		return
+	_set_status("%s daveti kabul edildi; Steam lobisine katılınıyor…" % inviter_name)
+	call_deferred("_show_main_menu_for_steam_join")
+
+
+func _show_main_menu_for_steam_join() -> void:
+	var current_scene := get_tree().current_scene
+	if current_scene and current_scene.scene_file_path == MAIN_MENU_SCENE:
+		return
+	get_tree().change_scene_to_file(MAIN_MENU_SCENE)
 
 
 func _on_steam_p2p_session_failed(remote_steam_id: int, message: String) -> void:
@@ -1207,17 +1231,45 @@ func _submit_action(action: String, payload: Dictionary) -> void:
 	_server_action_busy = false
 	var success := bool(result.get("success", false))
 	var message := str(result.get("message", result.get("error", "")))
-	_action_result.rpc_id(sender_id, success, message)
 	if success:
 		_append_server_event("action", {"player_id": player_id, "action": action})
 		mark_state_dirty()
+		# Keep the requester locked until its fresh authoritative snapshot has
+		# arrived. Both RPCs use the same reliable channel, so this ordering also
+		# closes the stale-state window between result and snapshot.
 		_broadcast_full_state()
+	_action_result.rpc_id(sender_id, success, message)
 
 
-@rpc("authority", "call_remote", "reliable", 0)
-func _action_result(success: bool, message: String) -> void:
-	if _is_server:
+func _execute_local_host_action(action: String, payload: Dictionary) -> void:
+	if (
+		state != NetworkState.MATCH
+		or not _is_server
+		or not _is_hosting_player
+		or local_player_id not in GameRules.PLAYER_IDS
+	):
+		_finish_local_action(false, "Çevrimiçi maç artık aktif değil.")
 		return
+	if not _disconnected_players.is_empty():
+		_finish_local_action(false, "Rakibin yeniden bağlanması bekleniyor.")
+		return
+	if _server_action_busy or not is_instance_valid(_battlefield) or not _battlefield.has_method("execute_network_action"):
+		_finish_local_action(false, "Sunucu önceki hamleyi çözüyor.")
+		return
+
+	_server_action_busy = true
+	var result: Dictionary = await _battlefield.execute_network_action(local_player_id, action, payload)
+	_server_action_busy = false
+	var success := bool(result.get("success", false))
+	var message := str(result.get("message", result.get("error", "")))
+	if success:
+		_append_server_event("action", {"player_id": local_player_id, "action": action})
+		mark_state_dirty()
+		_broadcast_full_state()
+	_finish_local_action(success, message)
+
+
+func _finish_local_action(success: bool, message: String) -> void:
 	_action_pending = false
 	action_pending_changed.emit(false)
 	if is_instance_valid(_battlefield) and _battlefield.has_method("show_toast") and not message.is_empty():
@@ -1225,6 +1277,15 @@ func _action_result(success: bool, message: String) -> void:
 		_battlefield.show_toast(message, color)
 	elif not success:
 		_set_status(message if not message.is_empty() else "Hamle sunucu tarafından reddedildi.", true)
+	if _smoke_client and not _smoke_client_finished:
+		call_deferred("_drive_smoke_client")
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _action_result(success: bool, message: String) -> void:
+	if _is_server:
+		return
+	_finish_local_action(success, message)
 
 
 func _broadcast_full_state() -> void:
@@ -1402,6 +1463,10 @@ func _drive_smoke_online_client(game_manager: GameManager) -> void:
 	if not game_manager.is_match_started:
 		return
 	if game_manager.is_game_active:
+		if _smoke_match_generation == 1 and not _smoke_turn_handoff_client_logged:
+			_drive_smoke_initial_turn(game_manager, false)
+			if not _smoke_turn_handoff_client_logged:
+				return
 		if not _smoke_disconnect_started:
 			_smoke_disconnect_started = true
 			print("ONLINE_FLOW_INITIAL_CLIENT_READY")
@@ -1431,26 +1496,19 @@ func _drive_smoke_online_host(game_manager: GameManager) -> void:
 	if (
 		game_manager.current_phase == GameManager.TurnPhase.EFFECT_SELECTION
 		and not game_manager.has_effect_selection(local_player_id)
-		and not _smoke_host_mulligan_pending
+		and not _action_pending
 	):
-		_smoke_host_mulligan_pending = true
 		var effect_offer := game_manager.get_effect_offer(local_player_id)
-		var effect_success := false
-		if not effect_offer.is_empty():
-			effect_success = _battlefield.resolve_effect_card_choice_for_player(local_player_id, effect_offer[0], true)
-		_smoke_host_mulligan_pending = false
-		print("ONLINE_FLOW_HOST_EFFECT_SELECTED generation=%d success=%s" % [_smoke_match_generation, effect_success])
+		var effect_accepted := not effect_offer.is_empty() and request_action("effect_choice", {"card_id": effect_offer[0]})
+		print("ONLINE_FLOW_HOST_EFFECT_SELECTED generation=%d accepted=%s" % [_smoke_match_generation, effect_accepted])
 		return
 	if (
 		game_manager.current_phase == GameManager.TurnPhase.MULLIGAN
 		and game_manager.active_player_id == local_player_id
-		and not _smoke_host_mulligan_pending
+		and not _action_pending
 	):
-		_smoke_host_mulligan_pending = true
-		var no_cards: Array[BaseCard] = []
-		var mulligan_success: bool = await _battlefield.resolve_mulligan_for_player(local_player_id, no_cards)
-		_smoke_host_mulligan_pending = false
-		print("ONLINE_FLOW_HOST_MULLIGAN generation=%d success=%s" % [_smoke_match_generation, mulligan_success])
+		var mulligan_accepted := request_action("mulligan", {"card_ids": []})
+		print("ONLINE_FLOW_HOST_MULLIGAN generation=%d accepted=%s" % [_smoke_match_generation, mulligan_accepted])
 		return
 	if _smoke_match_generation >= 2 and game_manager.is_match_started and game_manager.is_game_active:
 		if not _smoke_host_finished:
@@ -1466,6 +1524,9 @@ func _drive_smoke_online_host(game_manager: GameManager) -> void:
 			get_tree().create_timer(1.5).timeout.connect(func(): get_tree().quit(0))
 		return
 	if game_manager.is_game_active:
+		if _smoke_match_generation == 1 and not _smoke_turn_handoff_host_logged:
+			_drive_smoke_initial_turn(game_manager, true)
+			return
 		if _smoke_reconnect_peer_ready and not _smoke_forced_game_over:
 			_smoke_forced_game_over = true
 			print("NETWORK_RECONNECT_HOST_CONFIRMED")
@@ -1477,6 +1538,43 @@ func _drive_smoke_online_host(game_manager: GameManager) -> void:
 		_smoke_rematch_vote_sent = request_rematch()
 		if _smoke_rematch_vote_sent:
 			print("ONLINE_FLOW_REMATCH_HOST_VOTED")
+
+
+func _drive_smoke_initial_turn(game_manager: GameManager, host_role: bool) -> void:
+	if not game_manager.is_match_started or not game_manager.is_game_active:
+		return
+	if _smoke_initial_turn_player_id not in GameRules.PLAYER_IDS:
+		_smoke_initial_turn_player_id = game_manager.first_player_id
+	if _smoke_initial_turn_player_id not in GameRules.PLAYER_IDS:
+		return
+	var next_player_id := game_manager.get_opponent_id(_smoke_initial_turn_player_id)
+	if game_manager.active_player_id == next_player_id and game_manager.current_phase == GameManager.TurnPhase.PREPARATION:
+		if host_role and not _smoke_turn_handoff_host_logged:
+			_smoke_turn_handoff_host_logged = true
+			print("ONLINE_FLOW_TURN_HANDOFF_HOST first=%d active=%d phase=%d" % [
+				_smoke_initial_turn_player_id,
+				game_manager.active_player_id,
+				game_manager.current_phase,
+			])
+		elif not host_role and not _smoke_turn_handoff_client_logged:
+			_smoke_turn_handoff_client_logged = true
+			print("ONLINE_FLOW_TURN_HANDOFF_CLIENT first=%d active=%d phase=%d revision=%d" % [
+				_smoke_initial_turn_player_id,
+				game_manager.active_player_id,
+				game_manager.current_phase,
+				_last_snapshot_revision,
+			])
+		return
+	if game_manager.active_player_id != local_player_id or _action_pending:
+		return
+	if game_manager.current_phase not in [GameManager.TurnPhase.PREPARATION, GameManager.TurnPhase.COMBAT]:
+		return
+	if request_action("advance_phase"):
+		print("ONLINE_FLOW_TURN_ADVANCE role=%s player=%d phase=%d" % [
+			"host" if host_role else "client",
+			local_player_id,
+			game_manager.current_phase,
+		])
 
 
 func _broadcast_clock() -> void:
@@ -1493,7 +1591,7 @@ func _broadcast_clock() -> void:
 				game_manager.active_player_id,
 				game_manager.turn_time_remaining_seconds,
 				game_manager.turn_duration_seconds,
-				game_manager.is_game_active
+				bool(game_manager.get("_turn_timer_running"))
 			)
 
 
@@ -1766,6 +1864,10 @@ func _configure_authoritative_match_setup() -> void:
 	else:
 		MatchSetup.configure_multiplayer_server(_match_seed, _match_id, _room_ruleset)
 	_apply_room_settings_to_match_setup()
+	if _smoke_online_flow and _smoke_match_generation == 1:
+		# The full-flow smoke always exercises the hosted player's local authority
+		# path before reconnect/rematch coverage begins.
+		MatchSetup.forced_first_player_id = local_player_id if _is_hosting_player else 1
 	for player_id in GameRules.PLAYER_IDS:
 		MatchSetup.set_player_deck(player_id, configured_decks[player_id], configured_names[player_id])
 

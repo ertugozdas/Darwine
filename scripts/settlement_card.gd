@@ -210,7 +210,11 @@ func _update_ui() -> void:
 	super._update_ui()
 	
 	if _attack_lbl:
-		_attack_lbl.text = str(attack)
+		_attack_lbl.text = str(attack) if attack > 0 else "—"
+		_attack_lbl.add_theme_color_override(
+			"font_color",
+			Color(0.98, 0.96, 0.90) if attack > 0 else Color(0.55, 0.53, 0.50, 0.60)
+		)
 	if _health_lbl:
 		_health_lbl.text = str(health)
 

@@ -36,30 +36,6 @@
     "image_url": "res://images/settlements/altin_madeni.png"
   },
   {
-    "id": "kisla",
-    "name": "Kışla",
-    "description": "Tur Sonu: Aynı koridordaki ilk düşmana 1 hasar verir.",
-    "energy_cost": 3,
-    "rarity": "EPIC",
-    "health": 10,
-    "attack": 1,
-    "effect_id": "lane_training",
-    "effect_params": {"damage": 1},
-    "image_url": "res://images/settlements/kisla.png"
-  },
-  {
-    "id": "kereste_fabrikasi",
-    "name": "Kereste Fabrikası",
-    "description": "Tur Başlangıcı: Sahibine +1 geçici Enerji verir.",
-    "energy_cost": 2,
-    "rarity": "COMMON",
-    "health": 6,
-    "attack": 0,
-    "effect_id": "building_discount",
-    "effect_params": {"energy": 1},
-    "image_url": "res://images/settlements/kereste_fabrikasi.png"
-  },
-  {
     "id": "okcu_kulesi",
     "name": "Okçu Kulesi",
     "description": "Çatışma: Aynı koridordaki ilk düşmana 3 Saldırı ile saldırabilir.",
@@ -163,7 +139,7 @@
     "description": "Tur Başlangıcı: Aynı koridordaki savunmasız ilk dosta Korumalı 1 verir.",
     "energy_cost": 3,
     "rarity": "RARE",
-    "health": 6,
+    "health": 7,
     "attack": 0,
     "effect_id": "lane_protect",
     "effect_params": {"protection": 1},
@@ -182,28 +158,6 @@
     "image_url": "res://images/settlements/simyaci_kulesi.png"
   },
   {
-    "id": "barikat",
-    "name": "Barikat",
-    "description": "Ek özelliği yoktur; düşük maliyetle 8 Canlık bir savunma hattı kurar.",
-    "energy_cost": 1,
-    "rarity": "COMMON",
-    "health": 8,
-    "attack": 0,
-    "effect_id": "lane_blocker",
-    "image_url": "res://images/settlements/barikat.png"
-  },
-  {
-    "id": "gozcu_feneri",
-    "name": "Gözcü Feneri",
-    "description": "Çatışma: Aynı koridordaki ilk düşmana 1 Saldırı ile saldırabilir.",
-    "energy_cost": 1,
-    "rarity": "COMMON",
-    "health": 5,
-    "attack": 1,
-    "effect_id": "ranged_defense",
-    "image_url": "res://images/settlements/gozcu_feneri.png"
-  },
-  {
     "id": "savas_davulu",
     "name": "Savaş Davulu",
     "description": "Tur Sonu: Aynı koridordaki ilk düşmana 1 hasar verir.",
@@ -214,31 +168,6 @@
     "effect_id": "lane_training",
     "effect_params": {"damage": 1},
     "image_url": "res://images/settlements/savas_davulu.png"
-  },
-  {
-    "id": "ruh_pinari",
-    "name": "Ruh Pınarı",
-    "description": "Tur Sonu: Aynı koridordaki en yaralı dosta 3 Can verir.",
-    "energy_cost": 4,
-    "rarity": "EPIC",
-    "health": 8,
-    "attack": 0,
-    "effect_id": "lane_heal",
-    "effect_params": {"healing": 3},
-    "image_url": "res://images/settlements/ruh_pinari.png"
-  },
-  {
-    "id": "firtina_kulesi",
-    "name": "Fırtına Kulesi",
-    "description": "Kuşatma: Çatışmada 4 Saldırıyla vurur; Yapılara ve Merkez Binasına +1 hasar verir.",
-    "energy_cost": 4,
-    "rarity": "EPIC",
-    "health": 7,
-    "attack": 3,
-    "effect_id": "ranged_defense",
-    "tags": ["siege"],
-    "trait_values": {"siege_bonus": 1},
-    "image_url": "res://images/settlements/firtina_kulesi.png"
   },
   {
     "id": "yanki_mabedi",
@@ -263,53 +192,5 @@
     "effect_id": "lane_ready",
     "effect_params": {},
     "image_url": "res://images/settlements/golgeli_gecit.png"
-  },
-  {
-    "id": "bakir_gozetleme_kulesi",
-    "name": "Bakır Gözetleme Kulesi",
-    "description": "Menzilli: Çatışmada aynı koridordaki ilk düşmana 2 Saldırı ile saldırabilir.",
-    "energy_cost": 2,
-    "rarity": "COMMON",
-    "health": 4,
-    "attack": 2,
-    "effect_id": "ranged_defense",
-    "image_url": "res://images/settlements/bakir_gozetleme_kulesi.png"
-  },
-  {
-    "id": "ay_muhru_siginagi",
-    "name": "Ay Mührü Sığınağı",
-    "description": "Tur Başlangıcı: Aynı koridordaki savunmasız ilk dosta Korumalı 1 verir.",
-    "energy_cost": 3,
-    "rarity": "RARE",
-    "health": 7,
-    "attack": 0,
-    "effect_id": "lane_protect",
-    "effect_params": {"protection": 1},
-    "image_url": "res://images/settlements/ay_muhru_siginagi.png"
-  },
-  {
-    "id": "kizil_firin",
-    "name": "Kızıl Fırın",
-    "description": "Tur Sonu: Aynı koridordaki ilk düşmana 2 hasar verir.",
-    "energy_cost": 4,
-    "rarity": "EPIC",
-    "health": 6,
-    "attack": 1,
-    "effect_id": "lane_training",
-    "effect_params": {"damage": 2},
-    "image_url": "res://images/settlements/kizil_firini.png"
-  },
-  {
-    "id": "prizma_balista",
-    "name": "Prizma Balista",
-    "description": "Kuşatma: Çatışmada 4 Saldırıyla vurur; Yapılara ve Merkez Binasına +1 hasar verir.",
-    "energy_cost": 4,
-    "rarity": "EPIC",
-    "health": 5,
-    "attack": 4,
-    "effect_id": "ranged_defense",
-    "tags": ["siege"],
-    "trait_values": {"siege_bonus": 1},
-    "image_url": "res://images/settlements/prizma_balista.png"
   }
 ]

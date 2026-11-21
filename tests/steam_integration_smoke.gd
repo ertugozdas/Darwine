@@ -42,14 +42,26 @@ func _run() -> void:
 	if steam:
 		for method_name in [
 			"steamInitEx",
+			"run_callbacks",
+			"restartAppIfNecessary",
 			"createLobby",
 			"requestLobbyList",
 			"sendMessageToUser",
 			"receiveMessagesOnChannel",
+			"acceptSessionWithUser",
+			"closeSessionWithUser",
+			"requestUserStats",
+			"getAchievement",
 			"setAchievement",
+			"indicateAchievementProgress",
+			"getStatInt",
 			"setStatInt",
+			"storeStats",
+			"setRichPresence",
 			"fileRead",
 			"fileWrite",
+			"isOverlayEnabled",
+			"activateGameOverlay",
 			"activateGameOverlayInviteDialog",
 		]:
 			_expect(steam.has_method(method_name), "Steam API yöntemi eksik: %s" % method_name)
@@ -58,12 +70,40 @@ func _run() -> void:
 			"lobby_joined",
 			"lobby_match_list",
 			"lobby_chat_update",
+			"lobby_data_update",
 			"join_requested",
+			"join_game_requested",
+			"overlay_toggled",
 			"network_messages_session_request",
 			"network_messages_session_failed",
+			"user_stats_received",
 			"user_stats_stored",
+			"user_achievement_stored",
 		]:
 			_expect(steam.has_signal(signal_name), "Steam API sinyali eksik: %s" % signal_name)
+		var join_game_args := _steam_signal_args(steam, "join_game_requested")
+		_expect(join_game_args.size() == 2, "join_game_requested iki parametre taşımalı")
+		if join_game_args.size() == 2:
+			_expect(str((join_game_args[0] as Dictionary).get("name", "")) == "user", "Rich Presence arkadaş kimliği sözleşmesi değişti")
+			_expect(str((join_game_args[1] as Dictionary).get("name", "")) == "connect", "Rich Presence connect string sözleşmesi değişti")
+		var signal_contracts := {
+			"lobby_created": ["connect", "lobby_id"],
+			"lobby_joined": ["lobby", "permissions", "locked", "response"],
+			"lobby_data_update": ["success", "lobby_id", "member_id"],
+			"lobby_chat_update": ["lobby_id", "changed_id", "making_change_id", "chat_state"],
+			"join_requested": ["lobby_id", "steam_id"],
+			"overlay_toggled": ["active", "user_initiated", "app_id"],
+			"network_messages_session_request": ["remote_steam_id"],
+			"network_messages_session_failed": ["reason", "remote_steam_id", "connection_state", "debug_message"],
+			"user_stats_received": ["game_id", "result", "user_id"],
+			"user_stats_stored": ["game_id", "result"],
+			"user_achievement_stored": ["game_id", "group_achieve", "achievement_name", "current_progress", "max_progress"],
+		}
+		for signal_name in signal_contracts:
+			_expect(
+				_steam_signal_argument_names(steam, signal_name) == signal_contracts[signal_name],
+				"Steam sinyal parametre sözleşmesi değişti: %s" % signal_name
+			)
 
 	_test_transport_round_trip()
 	_test_cloud_merge_policy()
@@ -82,6 +122,10 @@ func _test_transport_round_trip() -> void:
 	var payload := "darwine-steam-p2p".to_utf8_buffer()
 	_expect(host.put_packet(payload) == OK, "Steam P2P paketi çerçevelenemedi")
 	_expect(host_api.sent.size() == 1, "Steam P2P paketi tek eşe gönderilmeli")
+	var oversized_payload := PackedByteArray()
+	oversized_payload.resize(SteamP2PPeer.MAX_PAYLOAD_BYTES + 1)
+	_expect(host.put_packet(oversized_payload) == ERR_INVALID_DATA, "Steam P2P paket üst sınırı uygulanmadı")
+	_expect(host_api.sent.size() == 1, "Boyut sınırını aşan Steam paketi gönderildi")
 	if host_api.sent.is_empty():
 		return
 	var sent := host_api.sent[0]
@@ -156,6 +200,18 @@ func _test_achievement_contract() -> void:
 		return
 	var mappings := manager.STEAM_ACHIEVEMENTS as Dictionary
 	var stat_mappings := manager.STEAM_STATS as Dictionary
+	_expect(manager.has_signal("overlay_state_changed"), "SteamManager overlay durumunu yayınlamalı")
+	_expect(manager.has_signal("stats_ready_changed"), "SteamManager istatistik hazırlığını yayınlamalı")
+	_expect(manager.has_signal("achievement_progressed"), "SteamManager başarım ilerlemesini yayınlamalı")
+	_expect(manager.has_method("open_friends_overlay"), "Steam arkadaş overlay geçidi eksik")
+	_expect(manager.has_method("open_achievements_overlay"), "Steam başarım overlay geçidi eksik")
+	_expect(manager.has_method("get_overlay_status_text"), "Steam overlay durum özeti eksik")
+	_expect(int(manager.call("_parse_connect_lobby_id", "+connect_lobby 76561199000000001")) == 76561199000000001, "Rich Presence katılma bilgisi çözülemedi")
+	_expect(int(manager.call("_parse_connect_lobby_id", "+connect_lobby=76561199000000002")) == 76561199000000002, "Eşittirli Steam katılma bilgisi çözülemedi")
+	_expect(not bool(manager.EMBED_CALLBACKS), "Steam callback'leri tek ve açık bir oyun döngüsünden yürütülmeli")
+	_expect(str(manager.RICH_PRESENCE_MENU_TOKEN).begins_with("#Status_"), "Ana menü Rich Presence token'ı eksik")
+	_expect(str(manager.RICH_PRESENCE_LOBBY_TOKEN).begins_with("#Status_"), "Lobi Rich Presence token'ı eksik")
+	_expect(str(manager.RICH_PRESENCE_MATCH_TOKEN).begins_with("#Status_"), "Maç Rich Presence token'ı eksik")
 	_expect(mappings.size() == 4, "Dört oyun içi başarım Steam API adına bağlanmalı")
 	_expect(stat_mappings.size() == 7, "Yedi oyun içi sayaç Steam istatistiğine bağlanmalı")
 	for profile_id in ["ilk_zafer", "tecrubeli_komutan", "kusatma_izi", "demir_seri"]:
@@ -165,6 +221,22 @@ func _test_achievement_contract() -> void:
 func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		_failures.append(message)
+
+
+func _steam_signal_args(steam: Object, signal_name: String) -> Array:
+	for signal_variant in steam.get_signal_list():
+		var signal_data := signal_variant as Dictionary
+		if str(signal_data.get("name", "")) == signal_name:
+			return signal_data.get("args", []) as Array
+	return []
+
+
+func _steam_signal_argument_names(steam: Object, signal_name: String) -> Array[String]:
+	var names: Array[String] = []
+	for argument_variant in _steam_signal_args(steam, signal_name):
+		var argument := argument_variant as Dictionary
+		names.append(str(argument.get("name", "")))
+	return names
 
 
 func _finish() -> void:

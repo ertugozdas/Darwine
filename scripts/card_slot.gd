@@ -89,7 +89,7 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 func _setup_visual_style() -> void:
-	var team_accent: Color = UI.TEAM_PLAYER if owner_id == 1 else UI.TEAM_OPPONENT
+	var team_accent := _get_team_accent(owner_id)
 	hover_highlight_color = Color(team_accent.darkened(0.52), 0.94)
 	border_highlight_color = Color(0.96, 0.76, 0.36, 1.0)
 	open_lane_border_color = Color(0.35, 0.49, 0.35, 0.88)
@@ -307,7 +307,7 @@ func _refresh_visual_style() -> void:
 		_style_box.bg_color = Color(normal_color, 0.82 if is_occupied else 0.34)
 		var show_open_lane := _is_lane_open and position_type == PositionType.FRONT
 		if _dominion_enabled and _dominion_owner_id in [1, 2]:
-			var dominion_accent := UI.TEAM_PLAYER if _dominion_owner_id == 1 else UI.TEAM_OPPONENT
+			var dominion_accent := _get_team_accent(_dominion_owner_id)
 			_style_box.border_color = Color(dominion_accent.lightened(0.12), 0.86)
 		elif show_open_lane:
 			_style_box.border_color = open_lane_border_color
@@ -355,11 +355,11 @@ func _refresh_dominion_badge() -> void:
 	var owner_text := tr("NEUTRAL")
 	if _dominion_owner_id == 1:
 		marker = "◆"
-		accent = UI.TEAM_PLAYER
+		accent = _get_team_accent(1)
 		owner_text = tr("PLAYER 1 CONTROL")
 	elif _dominion_owner_id == 2:
 		marker = "◆"
-		accent = UI.TEAM_OPPONENT
+		accent = _get_team_accent(2)
 		owner_text = tr("PLAYER 2 CONTROL")
 	_dominion_label.text = "%s  %d–%d" % [marker, player_one, player_two]
 	_dominion_label.add_theme_color_override("font_color", accent.lightened(0.24))
@@ -368,6 +368,16 @@ func _refresh_dominion_badge() -> void:
 		_dominion_badge_style.bg_color = Color(accent.darkened(0.72), 0.96)
 	_dominion_badge.queue_redraw()
 	tooltip_text = tr("%s • Control power %d–%d • Points resolve at round end.") % [owner_text, player_one, player_two]
+
+
+func _get_team_accent(player_id: int) -> Color:
+	var perspective_player_id := 1
+	if (
+		(MatchSetup.is_multiplayer_player() or MatchSetup.is_ai_match())
+		and MatchSetup.human_player_id in GameRules.PLAYER_IDS
+	):
+		perspective_player_id = MatchSetup.human_player_id
+	return UI.TEAM_PLAYER if player_id == perspective_player_id else UI.TEAM_OPPONENT
 
 func _draw() -> void:
 	if size.x < 12.0 or size.y < 12.0:
@@ -557,7 +567,7 @@ func _create_card_state_overlays() -> void:
 	_combat_badge.anchor_top = 0.0
 	_combat_badge.anchor_right = 0.0
 	_combat_badge.anchor_bottom = 0.0
-	_combat_label = _create_overlay_label(_combat_badge, "CombatLabel", 6)
+	_combat_label = _create_overlay_label(_combat_badge, "CombatLabel", 8)
 
 	_status_badge = _create_overlay_panel(
 		"StatusBadge",
@@ -568,21 +578,21 @@ func _create_card_state_overlays() -> void:
 	_status_badge.anchor_top = 0.0
 	_status_badge.anchor_right = 0.0
 	_status_badge.anchor_bottom = 0.0
-	_status_label = _create_overlay_label(_status_badge, "StatusLabel", 5)
+	_status_label = _create_overlay_label(_status_badge, "StatusLabel", 8)
 	_status_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	_status_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 
 	_skill_badge = _create_overlay_panel(
 		"SkillBadge",
-		Color(0.12, 0.075, 0.025, 0.97),
-		Color(1.0, 0.72, 0.25, 0.96)
+		Color(0.06, 0.15, 0.16, 0.97),
+		Color(0.28, 0.80, 0.76, 0.96)
 	)
 	_skill_badge.anchor_left = 0.0
 	_skill_badge.anchor_top = 0.0
 	_skill_badge.anchor_right = 0.0
 	_skill_badge.anchor_bottom = 0.0
-	_skill_label = _create_overlay_label(_skill_badge, "SkillLabel", 7)
-	_skill_label.text = "B"
+	_skill_label = _create_overlay_label(_skill_badge, "SkillLabel", 8)
+	_skill_label.text = "+"
 
 	_layout_card_state_overlays()
 	_refresh_card_state_overlay()
@@ -643,20 +653,20 @@ func _layout_card_state_overlays() -> void:
 		_combat_badge,
 		Rect2(
 			Vector2(visual_rect.position.x + edge_pad, visual_rect.position.y + edge_pad),
-			Vector2(available_width, maxf(13.0, badge_height))
+			Vector2(available_width, maxf(16.0, badge_height))
 		)
 	)
 
-	var status_height := clampf(visual_rect.size.y * 0.15, 9.0, 13.0)
+	var status_height := clampf(visual_rect.size.y * 0.17, 13.0, 17.0)
 	_set_state_overlay_rect(
 		_status_badge,
 		Rect2(
-			Vector2(visual_rect.position.x + edge_pad, visual_rect.end.y - status_height - edge_pad),
+			Vector2(visual_rect.position.x + edge_pad, visual_rect.end.y - status_height - edge_pad - 3.0),
 			Vector2(available_width, status_height)
 		)
 	)
 
-	var skill_size := Vector2(12.0, 12.0)
+	var skill_size := Vector2(15.0, 15.0)
 	_set_state_overlay_rect(
 		_skill_badge,
 		Rect2(
@@ -720,14 +730,14 @@ func _refresh_card_state_overlay() -> void:
 	var poison := card.get_status_amount("poison")
 	var protected_amount := card.get_status_amount("protected")
 	if stunned > 0:
-		statuses.append(tr("STUN %d") % stunned)
-		status_tooltips.append(tr("Stunned %d") % stunned)
+		statuses.append(tr("SER %d") % stunned)
+		status_tooltips.append(tr("Sersemlemiş %d") % stunned)
 	if poison > 0:
-		statuses.append(tr("POISON %d") % poison)
-		status_tooltips.append(tr("Poisoned %d") % poison)
+		statuses.append(tr("ZEH %d") % poison)
+		status_tooltips.append(tr("Zehirli %d") % poison)
 	if protected_amount > 0:
-		statuses.append(tr("PROTECTION %d") % protected_amount)
-		status_tooltips.append(tr("Protected %d") % protected_amount)
+		statuses.append(tr("KOR %d") % protected_amount)
+		status_tooltips.append(tr("Korumalı %d") % protected_amount)
 	if not statuses.is_empty():
 		_status_badge.visible = true
 		_status_label.text = " ".join(statuses)

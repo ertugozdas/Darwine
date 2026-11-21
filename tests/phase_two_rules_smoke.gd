@@ -60,13 +60,13 @@ func _test_turn_energy_and_phase_flow() -> void:
 	_expect(manager.complete_end_phase(1), "Aktif oyuncu Tur Sonunu tamamlayabilmeli")
 
 	p2_energy_by_round.append(int(manager.player_max_energy[2]))
-	_expect(p2_energy_by_round == [4], "İkinci oyuncunun ilk tur azami Enerjisi 4 olmalı")
+	_expect(p2_energy_by_round == [3], "İkinci oyuncunun ilk tur azami Enerjisi 3 olmalı")
 	_expect(manager.use_preparation_token(2), "İkinci oyuncu Hazırlık jetonunu kullanabilmeli")
-	_expect(manager.get_available_energy(2) == 5, "Hazırlık jetonu +1 geçici Enerji vermeli")
+	_expect(manager.get_available_energy(2) == 4, "Hazırlık jetonu +1 geçici Enerji vermeli")
 	_expect(not manager.has_preparation_token(2), "Hazırlık jetonu tek kullanımlık olmalı")
 	_expect(manager.spend_energy(2, 2), "Geçici Enerji kart maliyetinde kullanılabilmeli")
 	_expect(int(manager.player_temporary_energy[2]) == 0, "Geçici Enerji önce harcanmalı")
-	_expect(int(manager.player_current_energy[2]) == 3, "Kalan maliyet mevcut Enerjiden düşmeli")
+	_expect(int(manager.player_current_energy[2]) == 2, "Kalan maliyet mevcut Enerjiden düşmeli")
 
 	for _round_index in range(2, 6):
 		_finish_current_turn(manager)
@@ -75,7 +75,7 @@ func _test_turn_energy_and_phase_flow() -> void:
 		p2_energy_by_round.append(int(manager.player_max_energy[2]))
 
 	_expect(p1_energy_by_round == [3, 4, 5, 6, 7], "Oyuncu 1'in ilk beş raund Enerjisi 3,4,5,6,7 olmalı")
-	_expect(p2_energy_by_round == [4, 5, 6, 7, 8], "Oyuncu 2'nin ilk beş raund Enerjisi 4,5,6,7,8 olmalı")
+	_expect(p2_energy_by_round == [3, 4, 5, 6, 7], "Oyuncu 2'nin ilk beş raund Enerjisi 3,4,5,6,7 olmalı")
 	_expect(manager.round_count == 5, "On kişisel tur başlangıcında raund sayısı 5 olmalı")
 	_expect(_draw_requests.size() == 10, "Her kişisel tur başında bir otomatik çekiş istenmeli")
 	for request in _draw_requests:

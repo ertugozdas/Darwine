@@ -1,0 +1,177 @@
+{
+  "schema_version": 1,
+  "release_version": "0.7",
+  "release_stage": "RC",
+  "execution": "sequential",
+  "gates": [
+    {
+      "id": "release_contract",
+      "category": "contract",
+      "test": "res://tests/v0_7_release_gate_smoke.gd",
+      "marker": "V0_7_RELEASE_GATE_SMOKE_OK"
+    },
+    {
+      "id": "foundation",
+      "category": "campaign",
+      "test": "res://tests/v0_7_foundation_smoke.gd",
+      "marker": "V0_7_FOUNDATION_SMOKE_OK"
+    },
+    {
+      "id": "campaign_progress",
+      "category": "campaign",
+      "test": "res://tests/v0_7_campaign_progress_smoke.gd",
+      "marker": "V0_7_CAMPAIGN_PROGRESS_SMOKE_OK"
+    },
+    {
+      "id": "campaign_setup",
+      "category": "campaign",
+      "test": "res://tests/v0_7_campaign_setup_smoke.gd",
+      "marker": "V0_7_CAMPAIGN_SETUP_SMOKE_OK"
+    },
+    {
+      "id": "campaign_end_to_end",
+      "category": "campaign",
+      "test": "res://tests/v0_7_campaign_end_to_end_smoke.gd",
+      "marker": "V0_7_CAMPAIGN_END_TO_END_SMOKE_OK"
+    },
+    {
+      "id": "scenario_balance",
+      "category": "balance",
+      "test": "res://tests/v0_7_scenario_balance_suite.gd",
+      "marker": "V0_7_SCENARIO_BALANCE_SUITE_OK",
+      "environment": {
+        "DARWINE_V07_SCENARIO_SAMPLES": "4"
+      }
+    },
+    {
+      "id": "siege_balance",
+      "category": "balance",
+      "test": "res://tests/phase_seven_balance_suite.gd",
+      "marker": "PHASE_SEVEN_BALANCE_SUITE_OK",
+      "environment": {
+        "TDM_BALANCE_MATCH_COUNT": "50"
+      }
+    },
+    {
+      "id": "dominion_balance",
+      "category": "balance",
+      "test": "res://tests/phase_seven_balance_suite.gd",
+      "marker": "PHASE_SEVEN_BALANCE_SUITE_OK",
+      "environment": {
+        "TDM_BALANCE_MATCH_COUNT": "50",
+        "TDM_BALANCE_RULESET": "dominion"
+      }
+    },
+    {
+      "id": "effect_card_balance",
+      "category": "balance",
+      "test": "res://tests/effect_card_balance_suite.gd",
+      "marker": "EFFECT_CARD_BALANCE_SUITE_OK",
+      "environment": {
+        "TDM_EFFECT_BALANCE_MATCHES_PER_CARD": "6"
+      }
+    },
+    {
+      "id": "match_analysis",
+      "category": "analysis",
+      "test": "res://tests/v0_7_match_analysis_smoke.gd",
+      "marker": "V0_7_MATCH_ANALYSIS_SMOKE_OK"
+    },
+    {
+      "id": "match_analysis_ui",
+      "category": "analysis",
+      "test": "res://tests/v0_7_match_analysis_ui_smoke.gd",
+      "marker": "V0_7_MATCH_ANALYSIS_UI_SMOKE_OK"
+    },
+    {
+      "id": "match_analysis_profile",
+      "category": "analysis",
+      "test": "res://tests/v0_7_match_analysis_profile_smoke.gd",
+      "marker": "V0_7_MATCH_ANALYSIS_PROFILE_SMOKE_OK"
+    },
+    {
+      "id": "deck_advisor",
+      "category": "deck",
+      "test": "res://tests/v0_7_deck_advisor_smoke.gd",
+      "marker": "V0_7_DECK_ADVISOR_SMOKE_OK"
+    },
+    {
+      "id": "deck_advisor_ui",
+      "category": "deck",
+      "test": "res://tests/v0_7_deck_advisor_ui_smoke.gd",
+      "marker": "V0_7_DECK_ADVISOR_UI_SMOKE_OK"
+    },
+    {
+      "id": "active_match_save",
+      "category": "persistence",
+      "test": "res://tests/active_match_save_smoke.gd",
+      "marker": "ACTIVE_MATCH_SAVE_SMOKE_OK"
+    },
+    {
+      "id": "save_slots",
+      "category": "persistence",
+      "test": "res://tests/save_slots_smoke.gd",
+      "marker": "SAVE_SLOTS_SMOKE_OK"
+    },
+    {
+      "id": "profile_persistence",
+      "category": "persistence",
+      "test": "res://tests/profile_persistence_sync_smoke.gd",
+      "marker": "PROFILE_PERSISTENCE_SYNC_SMOKE_OK"
+    },
+    {
+      "id": "online_authority",
+      "category": "online",
+      "test": "res://tests/online_authority_smoke.gd",
+      "marker": "ONLINE_AUTHORITY_SMOKE_OK"
+    },
+    {
+      "id": "online_room_settings",
+      "category": "online",
+      "test": "res://tests/online_room_settings_smoke.gd",
+      "marker": "ONLINE_ROOM_SETTINGS_SMOKE_OK"
+    },
+    {
+      "id": "dominion_network",
+      "category": "online",
+      "test": "res://tests/dominion_network_smoke.gd",
+      "marker": "DOMINION_NETWORK_SMOKE_OK"
+    },
+    {
+      "id": "turn_perspective",
+      "category": "online",
+      "test": "res://tests/multiplayer_turn_perspective_smoke.gd",
+      "marker": "MULTIPLAYER_TURN_PERSPECTIVE_SMOKE_OK"
+    },
+    {
+      "id": "localization",
+      "category": "localization",
+      "test": "res://tests/localization_smoke.gd",
+      "marker": "LOCALIZATION_SMOKE_OK"
+    },
+    {
+      "id": "scenario_localization",
+      "category": "localization",
+      "test": "res://tests/v0_7_scenario_localization_smoke.gd",
+      "marker": "V0_7_SCENARIO_LOCALIZATION_SMOKE_OK"
+    },
+    {
+      "id": "analysis_localization",
+      "category": "localization",
+      "test": "res://tests/v0_7_match_analysis_localization_smoke.gd",
+      "marker": "V0_7_MATCH_ANALYSIS_LOCALIZATION_SMOKE_OK"
+    },
+    {
+      "id": "advisor_localization",
+      "category": "localization",
+      "test": "res://tests/v0_7_deck_advisor_localization_smoke.gd",
+      "marker": "V0_7_DECK_ADVISOR_LOCALIZATION_SMOKE_OK"
+    },
+    {
+      "id": "main_menu",
+      "category": "presentation",
+      "test": "res://tests/main_menu_smoke.gd",
+      "marker": "MAIN_MENU_SMOKE_OK"
+    }
+  ]
+}

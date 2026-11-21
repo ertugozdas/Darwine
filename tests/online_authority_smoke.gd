@@ -1,7 +1,9 @@
 extends SceneTree
 
 const NETWORK_MANAGER_SCRIPT := preload("res://scripts/network_manager.gd")
+const STEAM_P2P_PEER := preload("res://scripts/steam_p2p_peer.gd")
 const TEST_PORT := 61973
+const SNAPSHOT_TRANSPORT_BUDGET_BYTES := 480 * 1024
 
 var _failures: Array[String] = []
 
@@ -119,6 +121,12 @@ func _test_authoritative_action_boundary_and_persistence() -> void:
 	}
 	game_manager.set("_effect_selection_active", false)
 	var perspective_snapshot := battlefield.build_network_snapshot(1)
+	var snapshot_size_bytes := var_to_bytes(perspective_snapshot).size()
+	_expect(
+		snapshot_size_bytes <= SNAPSHOT_TRANSPORT_BUDGET_BYTES
+		and snapshot_size_bytes < STEAM_P2P_PEER.MAX_PAYLOAD_BYTES,
+		"Perspektif snapshot'ı Steam P2P taşıma bütçesini aştı: %d bayt" % snapshot_size_bytes
+	)
 	var public_manager := perspective_snapshot.get("manager", {}) as Dictionary
 	var public_effect := public_manager.get("effect_selection", {}) as Dictionary
 	_expect(str(public_effect.get("own_selected_card", "")) == "dovme_ocagi", "Oyuncunun kendi Etki Kartı public snapshot'ta yok")

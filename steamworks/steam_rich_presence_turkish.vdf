@@ -1,0 +1,10 @@
+"lang"
+{
+	"Language"	"turkish"
+	"Tokens"
+	{
+		"#Status_MainMenu"	"Ana menüde"
+		"#Status_InLobby"	"Steam lobisinde bekliyor"
+		"#Status_InMatch"	"%darwine_mode% — %darwine_match%"
+	}
+}

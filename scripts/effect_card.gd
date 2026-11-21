@@ -107,21 +107,29 @@ func _reset_anchors(control: Control) -> void:
 	control.anchor_bottom = 0.0
 
 
+func _update_visuals() -> void:
+	if not is_inside_tree() or not _frame_panel:
+		return
+	_apply_effect_frame_style()
+	if _persistent_badge:
+		_persistent_badge.add_theme_color_override("font_color", _rarity_accent())
+
+
 func _apply_effect_frame_style() -> void:
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.035, 0.042, 0.052, 0.99)
+	style.bg_color = Color(0.045, 0.043, 0.046, 0.99)
 	style.border_color = _rarity_accent()
-	style.set_border_width_all(4)
-	style.set_corner_radius_all(12)
+	style.set_border_width_all(3)
+	style.set_corner_radius_all(8)
 	style.shadow_color = Color(_rarity_accent(), 0.28)
-	style.shadow_size = 10
-	style.shadow_offset = Vector2(0.0, 4.0)
+	style.shadow_size = 8
+	style.shadow_offset = Vector2(0.0, 3.0)
 	_frame_panel.add_theme_stylebox_override("panel", style)
 
 
 func _rarity_accent() -> Color:
 	match rarity:
-		Rarity.RARE: return Color(0.24, 0.64, 0.96)
-		Rarity.EPIC: return Color(0.82, 0.38, 0.88)
-		Rarity.LEGENDARY: return Color(1.0, 0.66, 0.18)
-		_: return Color(0.68, 0.72, 0.76)
+		Rarity.RARE: return UI.RARITY_RARE
+		Rarity.EPIC: return UI.RARITY_EPIC
+		Rarity.LEGENDARY: return UI.RARITY_LEGENDARY
+		_: return UI.RARITY_COMMON

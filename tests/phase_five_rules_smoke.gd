@@ -170,7 +170,7 @@ func _test_structure_experience_rules() -> void:
 	var enemy_front_slot := board.create_lane_slot(2, CardSlot.Lane.CENTER, CardSlot.PositionType.FRONT)
 	var enemy_back_slot := board.create_lane_slot(2, CardSlot.Lane.CENTER, CardSlot.PositionType.BACK)
 	var mine := _place_structure(mine_slot, 1, "altin_madeni")
-	var barracks := _place_structure(barracks_slot, 1, "kisla")
+	var barracks := _place_structure(barracks_slot, 1, "savas_davulu")
 	_place_custom_hero(enemy_front_slot, 2, 0, 1, "Yapı Hedefi")
 	var passive_target := _place_custom_hero(enemy_back_slot, 2, 0, 5, "Pasif Hedef")
 	await process_frame

@@ -31,10 +31,10 @@ func _run() -> void:
 	var application_version := str(ProjectSettings.get_setting("application/config/version", ""))
 	var release_stage := str(ProjectSettings.get_setting("application/config/release_stage", ""))
 	_expect(start_button is Button, "Başla düğmesi bulunamadı")
-	_expect(game_title != null and game_title.get_theme_font_size("font_size") == 54, "Darwine başlığı 54 punto olmalı")
+	_expect(game_title != null and game_title.get_theme_font_size("font_size") >= 56, "Darwine başlığı UI_KIT aralığında (56-72) olmalı")
 	_expect(title_top_spacer != null and title_top_spacer.custom_minimum_size.y == 8.0, "Darwine başlığı biraz aşağı alınmalı")
 	_expect(application_name == "Darwine", "Oyun adı ana yapılandırmada tutulmalı")
-	_expect(application_version == "0.6" and release_stage == "Alpha", "Sürüm bilgisi ana yapılandırmada tutulmalı")
+	_expect(application_version == "0.7" and release_stage == "RC", "Sürüm bilgisi ana yapılandırmada tutulmalı")
 	_expect(game_title != null and game_title.text == application_name.to_upper(), "Ana başlık oyun adını ana yapılandırmadan okumalı")
 	_expect(menu.find_child("Eyebrow", true, false) == null, "Üç Koridorlu Kuşatma üst etiketi kaldırılmalı")
 	_expect(menu.find_child("CollectionBrief", true, false) == null, "Sağdaki Kart Arşivi paneli kaldırılmalı")
@@ -50,7 +50,12 @@ func _run() -> void:
 	_expect(load_menu_button != null and load_menu_button.visible and load_menu_button.text == tr("YÜKLE"), "Ana menü slot seçimi için Yükle düğmesini göstermeli")
 	var soundtrack_button := menu.find_child("SoundtrackButton", true, false) as Button
 	_expect(soundtrack_button is Button, "Soundtrack düğmesi bulunamadı")
-	_expect(soundtrack_button != null and soundtrack_button.get_theme_font_size("font_size") == 15, "Soundtrack düğmesi bir punto küçük olmalı")
+	_expect(
+		soundtrack_button != null
+		and soundtrack_button.get_theme_font_size("font_size") == 16
+		and soundtrack_button.text == "SOUNDTRACK",
+		"Soundtrack düğmesi yerelleştirilebilir anahtar ve tutarlı 16 punto kullanmalı"
+	)
 	var profile_button := menu.find_child("ProfileButton", true, false) as Button
 	_expect(profile_button is Button and profile_button.text == "PROFİL", "Profil düğmesi doğru kısa başlığı göstermeli")
 	_expect(menu.find_child("QuitButton", true, false) is Button, "Çıkış Yap düğmesi bulunamadı")
@@ -138,8 +143,8 @@ func _run() -> void:
 	await process_frame
 	var release_notes := menu.find_child("ReleaseNotesOverlay", true, false) as ReleaseNotesPanel
 	_expect(release_notes != null and release_notes.is_open(), "Sürüm notları açılmalı")
-	_expect(release_notes != null and release_notes.get_release_count() == 6, "0.1-0.6 sürüm geçmişi bulunmalı")
-	_expect(menu.find_child("Release0_6", true, false) is PanelContainer, "0.6 sürüm notu bulunamadı")
+	_expect(release_notes != null and release_notes.get_release_count() == 7, "0.1-0.7 sürüm geçmişi bulunmalı")
+	_expect(menu.find_child("Release0_7", true, false) is PanelContainer, "0.7 sürüm notu bulunamadı")
 	_expect(menu.find_child("Release0_1", true, false) is PanelContainer, "0.1 geçmiş sürüm notu bulunamadı")
 	menu.call("_hide_release_notes")
 
@@ -165,9 +170,12 @@ func _run() -> void:
 	var steam_mode_button := menu.find_child("SteamModeButton", true, false) as Button
 	var steam_panel := menu.find_child("SteamP2PPanel", true, false) as VBoxContainer
 	var steam_identity := menu.find_child("SteamIdentityStatus", true, false) as Label
+	var steam_capabilities := menu.find_child("SteamCapabilitiesStatus", true, false) as Label
 	var steam_host_button := menu.find_child("SteamCreateLobbyButton", true, false) as Button
 	var steam_refresh_button := menu.find_child("SteamRefreshLobbiesButton", true, false) as Button
 	var steam_invite_button := menu.find_child("SteamInviteFriendsButton", true, false) as Button
+	var steam_friends_button := menu.find_child("SteamFriendsOverlayButton", true, false) as Button
+	var steam_achievements_button := menu.find_child("SteamAchievementsButton", true, false) as Button
 	var steam_lobby_list := menu.find_child("SteamLobbyList", true, false) as VBoxContainer
 	var invite_code_input := menu.find_child("InviteCodeInput", true, false) as LineEdit
 	var multiplayer_join_button := menu.find_child("MultiplayerJoinButton", true, false) as Button
@@ -201,9 +209,12 @@ func _run() -> void:
 	_expect(host_room_panel != null and not host_room_panel.visible, "Steam modunda kodlu host alanı gizlenmeli")
 	_expect(join_room_panel != null and not join_room_panel.visible, "Steam modunda kodla katıl alanı gizlenmeli")
 	_expect(steam_identity != null and not steam_identity.text.is_empty(), "Steam kimlik/durum özeti gösterilmeli")
+	_expect(steam_capabilities != null and "Shift+Tab" in steam_capabilities.text, "Shift+Tab durumu gösterilmeli")
 	_expect(steam_host_button is Button, "Steam odası açma düğmesi bulunamadı")
 	_expect(steam_refresh_button is Button, "Steam lobi yenileme düğmesi bulunamadı")
 	_expect(steam_invite_button != null and steam_invite_button.disabled, "Lobi olmadan Steam arkadaş daveti kapalı olmalı")
+	_expect(steam_friends_button is Button, "Steam arkadaş overlay düğmesi bulunamadı")
+	_expect(steam_achievements_button is Button, "Steam başarım düğmesi bulunamadı")
 	_expect(steam_lobby_list is VBoxContainer, "Steam lobi listesi bulunamadı")
 	_expect(int(ProjectSettings.get_setting("steam/initialization/app_data/app_id", 0)) > 0, "Steam App ID proje ayarında tanımlanmalı")
 	_capture("/tmp/tdm_multiplayer_steam.png")
@@ -245,7 +256,13 @@ func _run() -> void:
 		how_to_overlay.open_panel(2)
 		await process_frame
 		_expect(_tree_contains_text(how_to_overlay, tr("DESTE, KARTLAR VE ETKİ")), "Kart türleri ve Etki Kartı rehberi görünmüyor")
-		_expect(_tree_contains_text(how_to_overlay, "Rakibin seçimi gizlidir."), "Etki Kartı gizlilik rehberi görünmüyor")
+		_expect(
+			_tree_contains_text(
+				how_to_overlay,
+				tr("ETKİ KARTI  •  Mulligan'dan önce üç tekliften birini seçersin. Eline girmez ve Enerji harcamaz; maç boyunca pasif kalır. Rakibin seçimi gizlidir.")
+			),
+			"Etki Kartı gizlilik rehberi görünmüyor"
+		)
 		_capture("/tmp/tdm_how_to_cards.png")
 		how_to_overlay.open_panel(3)
 		await process_frame
@@ -262,7 +279,7 @@ func _run() -> void:
 		_capture("/tmp/tdm_how_to_combat.png")
 		how_to_overlay.open_panel(6)
 		await process_frame
-		_expect(_tree_contains_text(how_to_overlay, "CAN ÇALMA"), "Yeni Can Çalma anahtarı rehberde açıklanmıyor")
+		_expect(_tree_contains_text(how_to_overlay, tr("CAN ÇALMA")), "Yeni Can Çalma anahtarı rehberde açıklanmıyor")
 		_capture("/tmp/tdm_how_to_mastery.png")
 		how_to_overlay.open_panel(7)
 		await process_frame

@@ -85,7 +85,7 @@ Geçici P2P taşıma kesintilerinde aynı Steam Lobby üyeliği ve reconnect tok
 
 1. Gerçek App ID'yi `project.godot` içine yaz.
 2. Yerel testte `steam_appid.txt` değerini aynı App ID yap; depot manifestinden bu dosyayı çıkar.
-3. Normal Godot 4.7 export template'lerini kullan. GodotSteam'e özel module template'i kullanma.
+3. Resmi bağımsız Godot 4.7.1 yürütücüsünü ve normal Godot 4.7.1 export template'lerini kullan. GodotSteam'e özel module template'i kullanma. Steam üzerinden kurulan Godot editörünün kendi klasöründeki `steam_api64.dll`, proje GDExtension bağımlılığını gölgeleyebildiği için Steam editör build'iyle export/test yapma.
 4. Hedef platformun GodotSteam bağımlılıklarının export yanında bulunduğunu doğrula (`steam_api64`, ilgili GDExtension library ve platform runtime'ı).
 5. Steamworks başarımlarını, istatistiklerini ve Cloud kotasını Publish et.
 6. Build'i SteamPipe ile beta branch'e yükle ve Steam istemcisinden çalıştır.

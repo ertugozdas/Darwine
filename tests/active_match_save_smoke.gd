@@ -1,6 +1,7 @@
 extends SceneTree
 
 const TEST_PATH := "user://active_match_save_smoke.json"
+const SCENARIO_CATALOG := preload("res://scripts/scenario_catalog.gd")
 
 var _failures: Array[String] = []
 
@@ -12,6 +13,8 @@ func _initialize() -> void:
 func _run() -> void:
 	SafeJsonStore.remove_family(TEST_PATH, ActiveMatchRepository.BACKUP_COUNT)
 	MatchSetup.configure_local(57001)
+	SCENARIO_CATALOG.load_catalog(true)
+	MatchSetup.set_scenario_context(SCENARIO_CATALOG.build_match_context("cepheye_ilk_adim"))
 	MatchSetup.fast_mode = true
 	var packed := load("res://battlefield.tscn") as PackedScene
 	_expect(packed != null, "battlefield.tscn yüklenemedi")
@@ -25,6 +28,15 @@ func _run() -> void:
 	while battlefield._is_dealing_initial_hands:
 		await process_frame
 	await process_frame
+	var scenario_button := battlefield.find_child("ScenarioObjectivesButton", true, false) as Button
+	var scenario_briefing := battlefield.find_child("ScenarioBriefingOverlay", true, false) as Control
+	_expect(scenario_button != null, "Senaryo hedefleri savaş alanı kenar çubuğunda görünmeli")
+	_expect(scenario_briefing != null, "Senaryo brifingi savaş alanında oluşturulmalı")
+	battlefield.call("_show_scenario_briefing")
+	_expect(scenario_briefing != null and bool(scenario_briefing.call("is_open")), "Senaryo brifingi savaş içinden açılabilmeli")
+	if scenario_briefing:
+		_expect(int(scenario_briefing.call("get_objective_count")) == 3, "Savaş içi brifing senaryo hedeflerini göstermeli")
+		scenario_briefing.call("close_panel")
 
 	var manager := battlefield.game_manager as GameManager
 	manager.cards_drawn_per_turn = 0
@@ -48,6 +60,14 @@ func _run() -> void:
 		return
 	var play_result := battlefield.play_hand_card_to_slot(playable, target_slot)
 	_expect(bool(play_result.get("success", false)), "Fixture kartı sahaya oynanamadı")
+	var live_summary := battlefield._match_telemetry.get_summary() as Dictionary
+	var live_player := (live_summary.get("players", {}) as Dictionary).get(first_player, {}) as Dictionary
+	var live_lane := (live_player.get("lane_activity", {}) as Dictionary).get(str(int(target_slot.lane_id)), {}) as Dictionary
+	_expect(int(live_lane.get("deployments", 0)) == 1, "Gerçek kart yerleşimi koridor telemetrisine yazılmalı")
+	_expect(
+		int(live_player.get("energy_spent", 0)) == int(play_result.get("energy_spent", -1)),
+		"Telemetri değiştirilmiş kart maliyeti yerine gerçekten harcanan Enerjiyi kullanmalı"
+	)
 
 	playable.apply_status(EffectResolver.STATUS_PROTECTED, 2)
 	playable.apply_status(EffectResolver.STATUS_POISON, 1, 2)
@@ -100,6 +120,10 @@ func _run() -> void:
 
 	var snapshot := battlefield.build_active_match_snapshot("test_round_trip")
 	_expect(not snapshot.is_empty(), "Aktif maç snapshot'ı üretilemedi")
+	_expect(
+		str((snapshot.get("scenario_context", {}) as Dictionary).get("scenario_id", "")) == "cepheye_ilk_adim",
+		"Senaryo bağlamı aktif maç snapshot'ına yazılmadı"
+	)
 	var snapshot_validation := ActiveMatchRepository.new().validate_snapshot(snapshot)
 	_expect(bool(snapshot_validation.get("success", false)), "Aktif maç snapshot şeması geçersiz")
 	var saved_manager := snapshot.get("manager", {}) as Dictionary
@@ -198,6 +222,8 @@ func _run() -> void:
 	var restored_zones := restored_snapshot.get("zones", {}) as Dictionary
 
 	_expect(str(restored_snapshot.get("match_id", "")) == str(snapshot.get("match_id", "")), "Yükleme match_id değerini korumadı")
+	_expect(MatchSetup.get_scenario_id() == "cepheye_ilk_adim", "Senaryo bağlamı aktif maç snapshot'ından geri yüklenmedi")
+	_expect(restored.find_child("ScenarioObjectivesButton", true, false) is Button, "Yüklenen senaryo maçında hedef düğmesi geri gelmeli")
 	_expect(restored_manager.active_player_id == int(saved_manager.get("active_player_id", 0)), "Aktif oyuncu geri yüklenmedi")
 	_expect(restored_manager.turn_count == 7 and restored_manager.round_count == 4, "Tur/raund sayaçları geri yüklenmedi")
 	_expect(restored_manager.player_current_energy == {1: 5, 2: 7}, "Enerji durumu geri yüklenmedi")

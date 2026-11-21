@@ -4,9 +4,9 @@ Bu belge profil önbelleği, aktif maç snapshot'ı, çevrimiçi otorite ve maç
 
 ## Profil kaydı ve çevrimiçi eşitleme
 
-Yerel profil `user://darwine_profile.json` dosyasında şema sürümü 4 ile tutulur. Yazma işlemi geçici dosya + atomik yer değiştirme kullanır ve üç yedek döndürür. Ana dosya okunamazsa yedekler sırayla denenir; eski şemalar migration geçmişi korunarak güncellenir.
+Yerel profil `user://darwine_profile.json` dosyasında şema sürümü 5 ile tutulur. Yazma işlemi geçici dosya + atomik yer değiştirme kullanır ve üç yedek döndürür. Ana dosya okunamazsa yedekler sırayla denenir; eski şemalar migration geçmişi korunarak güncellenir. v5 göçü, eski profil verisini değiştirmeden `campaigns` bölümünü ekler.
 
-Profil; komutan adı, seviye/XP/mühür, istatistikler, başarılar, görevler, kozmetikler, son 30 benzersiz maç, desteler ve ayar önbelleğini taşır. `DeckManager` ve `SettingsManager` kendi yerel depoları olmaya devam eder; `ProfileRepository` bu bölümlerin çevrimdışı/senkronize önbelleğini izler.
+Profil; komutan adı, seviye/XP/mühür, istatistikler, başarılar, görevler, kozmetikler, Komutan Seferi ilerlemesi, son 30 benzersiz maç ve maç analizleri, desteler ve ayar önbelleğini taşır. `DeckManager` ve `SettingsManager` kendi yerel depoları olmaya devam eder; `ProfileRepository` bu bölümlerin çevrimdışı/senkronize önbelleğini izler.
 
 `ProfileSyncProvider` gerçek hesap/back-end adaptör sözleşmesidir. Varsayılan sağlayıcı kullanılamaz durumdadır; yerel JSON hiçbir zaman sahte çevrimiçi profil diye sunulmaz. Gerçek sağlayıcı aşağıdaki güvenleri sağlamalıdır:
 
@@ -27,14 +27,14 @@ Snapshot'ın ana bölümleri:
 
 | Bölüm | Saklanan durum |
 |---|---|
-| Kimlik | `match_id`, oyun sürümü, seed, mod, kurallar bütünü, maç adı ve tur süresi |
+| Kimlik | `match_id`, oyun sürümü, seed, mod, kurallar bütünü, maç adı, tur süresi ve varsa kararlı senaryo bağlamı |
 | GameManager | aktif/ilk oyuncu, tur/raund/faz, Enerji ve geçici Enerji, Merkez canları, mulligan, hamle hakları, kalan süre |
 | Bölgeler | iki deste sırası, iki el, mezarlıklar, saha ve Merkez kartları, slot/koridor kimliği |
 | Kart runtime | fiziksel ağ kimliği, sahip, mevcut/maksimum statlar, seviye/XP, trait ve durumlar, Beceri eki, hazır/tükenmiş ve hareket durumu |
 | RNG | iki deste RNG'sinin seed+state değeri ve AI RNG state'i |
 | Etki Kartları | iki teklif, seçimler, tur içi ledger, son tetik ve maç-geneli tetik sayacı |
 
-Restore önce tüm el/saha/mezarlık fiziksel kimliklerini ve sahipliği doğrular. Yinelenen kimlik, bilinmeyen kart, geçersiz sahip veya deste sınırını aşan fiziksel kart sayısı kabul edilmez. Teklifler yeniden üretilmez; deste sırası ve RNG `state` değerleri doğrudan geri konur. Tur sayacı kayıtlı kalan süreden, sahne kurulum karelerini tüketmeden sürer.
+Restore önce tüm el/saha/mezarlık fiziksel kimliklerini ve sahipliği doğrular. Yinelenen kimlik, bilinmeyen kart, geçersiz sahip veya deste sınırını aşan fiziksel kart sayısı kabul edilmez. Teklifler yeniden üretilmez; deste sırası ve RNG `state` değerleri doğrudan geri konur. Tur sayacı kayıtlı kalan süreden, sahne kurulum karelerini tüketmeden sürer. Senaryo alanı taşımayan v0.6 ve daha eski uyumlu snapshot'lar normal maç olarak yüklenir; eski bir sefer bağlamı çevrimiçi veya yeni yerel kuruluma sızmaz.
 
 Ana menüdeki **YÜKLE** düğmesi kayıt slotlarını ad, oyun modu, raund, tur ve tarih bilgileriyle listeler. Seçilen kayıt bozuk/eski/uyumsuzsa yeni maç başlatılmaz; kullanıcı geçerli yedekten kurtarabilir veya yalnızca o slotu silebilir. Kayıt bulunmadığında **YÜKLE** görünür kalır ancak devre dışıdır.
 

@@ -217,18 +217,18 @@ func _apply_upgrade_template_layout() -> void:
 		Rect2(11.0, 0.0, 19.0, 34.0), 15
 	)
 	_set_template_control_rect(_art_texture, Rect2(19.0, 28.0, 162.0, 122.0))
-	_set_template_label_rect(_allowed_targets_lbl, Rect2(39.0, 154.0, 53.0, 22.0), 8)
+	_set_template_label_rect(_allowed_targets_lbl, Rect2(37.0, 154.0, 58.0, 22.0), 9)
 	_set_template_value_badge(
 		_attack_panel, _attack_lbl, Rect2(98.0, 154.0, 24.0, 22.0),
-		Rect2(9.0, 0.0, 12.0, 22.0), 9
+		Rect2(9.0, 0.0, 12.0, 22.0), 10
 	)
 	_set_template_value_badge(
 		_armor_panel, _armor_lbl, Rect2(127.0, 154.0, 24.0, 22.0),
-		Rect2(9.0, 0.0, 12.0, 22.0), 9
+		Rect2(9.0, 0.0, 12.0, 22.0), 10
 	)
 	_set_template_value_badge(
 		_health_panel, _health_lbl, Rect2(156.0, 154.0, 24.0, 22.0),
-		Rect2(9.0, 0.0, 12.0, 22.0), 9
+		Rect2(9.0, 0.0, 12.0, 22.0), 10
 	)
 	_set_template_label_rect(_name_lbl, Rect2(20.0, 181.0, 160.0, 22.0), 15)
 	_set_template_label_rect(_desc_lbl, Rect2(21.0, 213.0, 158.0, 50.0), 10)
@@ -250,16 +250,26 @@ func _update_ui() -> void:
 	super._update_ui()
 	
 	if _attack_lbl:
-		var prefix = "+" if bonus_attack > 0 else ""
-		_attack_lbl.text = prefix + str(bonus_attack)
+		_attack_lbl.text = ("+%d" % bonus_attack) if bonus_attack > 0 else "—"
+		_attack_lbl.add_theme_color_override(
+			"font_color",
+			Color(1.0, 0.88, 0.56) if bonus_attack > 0 else Color(0.55, 0.53, 0.50, 0.45)
+		)
 	if _armor_lbl:
-		var prefix = "+" if bonus_armor > 0 else ""
-		_armor_lbl.text = prefix + str(bonus_armor)
+		_armor_lbl.text = ("+%d" % bonus_armor) if bonus_armor > 0 else "—"
+		_armor_lbl.add_theme_color_override(
+			"font_color",
+			Color(0.68, 0.90, 1.0) if bonus_armor > 0 else Color(0.55, 0.53, 0.50, 0.45)
+		)
 	if _health_lbl:
-		var prefix = "+" if bonus_health > 0 else ""
-		_health_lbl.text = prefix + str(bonus_health)
+		_health_lbl.text = ("+%d" % bonus_health) if bonus_health > 0 else "—"
+		_health_lbl.add_theme_color_override(
+			"font_color",
+			Color(0.66, 0.96, 0.72) if bonus_health > 0 else Color(0.55, 0.53, 0.50, 0.45)
+		)
 	if _allowed_targets_lbl:
 		_allowed_targets_lbl.text = _get_allowed_targets_display_text()
+		_allowed_targets_lbl.add_theme_color_override("font_color", UI.CARD_TYPE_UPGRADE.lightened(0.35))
 
 func _get_allowed_targets_display_text() -> String:
 	match allowed_targets.strip_edges().to_lower():

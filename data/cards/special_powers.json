@@ -59,18 +59,6 @@
     "image_url": "res://images/spells/yer_degistiren_ruzgar.png"
   },
   {
-    "id": "onarim_ritueli",
-    "name": "Onarım Ritüeli",
-    "description": "Hedef: Yaralı dost Yapı. En fazla 4 Can verir.",
-    "energy_cost": 2,
-    "rarity": "COMMON",
-    "power_type": "Onarım",
-    "intensity": 4,
-    "effect_id": "repair_structure",
-    "effect_params": {"healing": 4},
-    "image_url": "res://images/spells/onarim_ritueli.png"
-  },
-  {
     "id": "alev_dalgasi",
     "name": "Alev Dalgası",
     "description": "Hedef: Düşman Kahraman veya Yapı. Hedef koridordaki tüm düşman kartlara 2 hasar verir.",
@@ -98,25 +86,13 @@
     "id": "kivilcim",
     "name": "Kıvılcım",
     "description": "Hedef: Düşman Kahraman veya Yapı. 2 hasar verir.",
-    "energy_cost": 2,
+    "energy_cost": 1,
     "rarity": "COMMON",
     "power_type": "Hasar",
     "intensity": 2,
     "effect_id": "damage_target",
     "effect_params": {"damage": 2},
     "image_url": "res://images/spells/kivilcim.png"
-  },
-  {
-    "id": "zincir_yildirim",
-    "name": "Zincir Yıldırım",
-    "description": "Hedef: Düşman Kahraman veya Yapı. Hedef koridordaki tüm düşman kartlara 3 hasar verir.",
-    "energy_cost": 4,
-    "rarity": "EPIC",
-    "power_type": "Alan Hasarı",
-    "intensity": 3,
-    "effect_id": "damage_lane",
-    "effect_params": {"damage": 3},
-    "image_url": "res://images/spells/zincir_yildirim.png"
   },
   {
     "id": "taktik_degisim",
@@ -152,7 +128,7 @@
     "intensity": 1,
     "effect_id": "banish_target",
     "effect_params": {},
-    "image_url": "res://images/spells/zehir_yagmuru.png"
+    "image_url": "res://images/spells/zincir_yildirim.png"
   },
   {
     "id": "kan_bedeli",
@@ -189,41 +165,5 @@
     "effect_id": "revive_last_hero",
     "effect_params": {},
     "image_url": "res://images/spells/kullerden_donus.png"
-  },
-  {
-    "id": "kor_kuresi",
-    "name": "Kor Küresi",
-    "description": "Hedef: Düşman Kahraman veya Yapı. 3 hasar verir.",
-    "energy_cost": 3,
-    "rarity": "COMMON",
-    "power_type": "Hasar",
-    "intensity": 3,
-    "effect_id": "damage_target",
-    "effect_params": {"damage": 3},
-    "image_url": "res://images/spells/kivilcim.png"
-  },
-  {
-    "id": "zaman_yarigi",
-    "name": "Zaman Yarığı",
-    "description": "Hedef: Düşman Kahraman veya Yapı. Sersemlemiş 2 uygular; sonraki iki Hazır olma adımını atlatır.",
-    "energy_cost": 3,
-    "rarity": "RARE",
-    "power_type": "Zaman",
-    "intensity": 2,
-    "effect_id": "stun_target",
-    "effect_params": {"ready_skips": 2},
-    "image_url": "res://images/spells/buz_muhru.png"
-  },
-  {
-    "id": "prizma_perdesi",
-    "name": "Prizma Perdesi",
-    "description": "Hedef: Dost Kahraman veya Yapı. Korumalı 4 verir; alınacak sonraki hasarı azaltır.",
-    "energy_cost": 3,
-    "rarity": "EPIC",
-    "power_type": "Koruma",
-    "intensity": 4,
-    "effect_id": "protect_target",
-    "effect_params": {"protection": 4},
-    "image_url": "res://images/spells/koruyucu_muhur.png"
   }
 ]

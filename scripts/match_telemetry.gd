@@ -1,6 +1,7 @@
 class_name MatchTelemetry extends Node
 
 const DEFAULT_LOG_PATH := "user://match_telemetry.jsonl"
+const TELEMETRY_SCHEMA_VERSION := 3
 
 var events: Array[Dictionary] = []
 var log_path := DEFAULT_LOG_PATH
@@ -16,6 +17,7 @@ var _first_hq_damage_round := 0
 var _first_dominion_score_round := 0
 var _invalid_actions := 0
 var _dominion_points_awarded := {1: 0, 2: 0}
+var _effect_card_trigger_counts := {1: 0, 2: 0}
 var _initial_hq_health := {
 	1: GameRules.HEADQUARTERS_HEALTH,
 	2: GameRules.HEADQUARTERS_HEALTH,
@@ -32,7 +34,11 @@ func setup(
 	_ai_controller = ai_controller
 	write_to_disk = should_write_to_disk
 	log_path = custom_log_path
-	_match_id = "%d-%d" % [MatchSetup.match_seed, Time.get_ticks_usec()]
+	_match_id = (
+		MatchSetup.match_id
+		if not MatchSetup.match_id.is_empty()
+		else "%d-%d" % [MatchSetup.match_seed, Time.get_ticks_usec()]
+	)
 	_connect_signals()
 
 
@@ -41,8 +47,11 @@ func get_summary() -> Dictionary:
 	if duration_seconds <= 0.0 and _start_ticks_msec > 0:
 		duration_seconds = float(Time.get_ticks_msec() - _start_ticks_msec) / 1000.0
 	return {
+		"telemetry_schema_version": TELEMETRY_SCHEMA_VERSION,
 		"match_id": _match_id,
 		"match_name": MatchSetup.match_name,
+		"scenario_id": MatchSetup.get_scenario_id(),
+		"scenario_context": MatchSetup.get_scenario_context(),
 		"seed": MatchSetup.match_seed,
 		"ruleset": int(MatchSetup.ruleset),
 		"ruleset_name": MatchSetup.get_ruleset_name(),
@@ -78,6 +87,7 @@ func _connect_signals() -> void:
 	_game_manager.attack_declared.connect(_on_attack_declared)
 	_game_manager.card_moved.connect(_on_card_moved)
 	_game_manager.effect_resolved.connect(_on_effect_resolved)
+	_game_manager.effect_trigger_state_changed.connect(_on_effect_trigger_state_changed)
 	_game_manager.card_destroyed.connect(_on_card_destroyed)
 	_game_manager.experience_changed.connect(_on_experience_changed)
 	_game_manager.card_leveled_up.connect(_on_card_leveled_up)
@@ -96,6 +106,7 @@ func _on_mulligan_player_changed(_player_id: int) -> void:
 	_start_ticks_msec = Time.get_ticks_msec()
 	_record("match_start", {
 		"match_name": MatchSetup.match_name,
+		"scenario_context": MatchSetup.get_scenario_context(),
 		"ruleset": int(MatchSetup.ruleset),
 		"ruleset_name": MatchSetup.get_ruleset_name(),
 		"first_player_id": _game_manager.first_player_id,
@@ -163,9 +174,10 @@ func _on_card_played(card: BaseCard, target: BaseCard) -> void:
 		"player_id": card.owner_id if card else 0,
 		"card_id": card.card_id if card else "",
 		"card_name": card.card_name if card else "",
-		"card_type": card.get_class() if card else "",
-		"energy_cost": card.energy_cost if card else 0,
+		"card_type": card._get_card_type_key() if card else "",
+		"energy_cost": int(card.get_meta("telemetry_energy_spent", card.energy_cost)) if card else 0,
 		"target_card_id": target.card_id if target else "",
+		"lane": _card_lane(card, _card_lane(target)),
 	})
 
 
@@ -199,9 +211,28 @@ func _on_effect_resolved(
 		"player_id": source.owner_id if source else 0,
 		"source_card_id": source.card_id if source else "",
 		"target_card_id": target.card_id if target else "",
+		"source_lane": _card_lane(source),
+		"target_lane": _card_lane(target, _card_lane(source)),
 		"damage": int(result.get("damage", 0)),
 		"healed": int(result.get("healed", 0)),
 		"destroyed": bool(result.get("destroyed", false)),
+	})
+
+
+func _on_effect_trigger_state_changed(player_id: int, state: Dictionary) -> void:
+	if not _started or player_id not in GameRules.PLAYER_IDS:
+		return
+	var current_count := maxi(0, int(state.get("match_trigger_count", 0)))
+	var previous_count := int(_effect_card_trigger_counts.get(player_id, 0))
+	if current_count <= previous_count:
+		return
+	_effect_card_trigger_counts[player_id] = current_count
+	_record("effect_card_trigger", {
+		"player_id": player_id,
+		"trigger_id": str(state.get("last_trigger_id", "")),
+		"trigger_details": (state.get("last_trigger_details", {}) as Dictionary).duplicate(true),
+		"trigger_delta": current_count - previous_count,
+		"match_trigger_count": current_count,
 	})
 
 
@@ -209,6 +240,7 @@ func _on_card_destroyed(card: BaseCard, source: BaseCard) -> void:
 	_record("card_destroyed", {
 		"player_id": card.owner_id if card else 0,
 		"card_id": card.card_id if card else "",
+		"lane": _card_lane(card, _card_lane(source)),
 		"source_card_id": source.card_id if source else "",
 		"source_player_id": source.owner_id if source else 0,
 	})
@@ -301,6 +333,7 @@ func _on_game_over(winner_id: int) -> void:
 		duration_seconds = float(Time.get_ticks_msec() - _start_ticks_msec) / 1000.0
 	_record("match_end", {
 		"winner_id": winner_id,
+		"scenario_context": MatchSetup.get_scenario_context(),
 		"ruleset": int(MatchSetup.ruleset),
 		"ruleset_name": MatchSetup.get_ruleset_name(),
 		"win_reason": _game_manager.win_reason,
@@ -321,7 +354,9 @@ func _on_game_over(winner_id: int) -> void:
 func _record(event_name: String, payload: Dictionary = {}) -> void:
 	var event := payload.duplicate(true)
 	event["event"] = event_name
+	event["telemetry_schema_version"] = TELEMETRY_SCHEMA_VERSION
 	event["match_id"] = _match_id
+	event["scenario_id"] = MatchSetup.get_scenario_id()
 	event["seed"] = MatchSetup.match_seed
 	event["ruleset"] = int(MatchSetup.ruleset)
 	event["ruleset_name"] = MatchSetup.get_ruleset_name()
@@ -370,7 +405,20 @@ func _build_player_summaries() -> Dictionary:
 	for player_id in GameRules.PLAYER_IDS:
 		players[player_id] = {
 			"cards_played": 0,
+			"heroes_played": 0,
+			"settlements_played": 0,
+			"special_powers_played": 0,
+			"upgrades_played": 0,
 			"energy_spent": 0,
+			"unspent_energy_at_combat": 0,
+			"combat_phases": 0,
+			"max_unspent_energy_at_combat": 0,
+			"attacks_declared": 0,
+			"hq_attacks": 0,
+			"moves": 0,
+			"cross_lane_moves": 0,
+			"effect_resolutions": 0,
+			"effect_card_triggers": 0,
 			"effect_damage": 0,
 			"healing": 0,
 			"cards_destroyed": 0,
@@ -380,6 +428,8 @@ func _build_player_summaries() -> Dictionary:
 			"dominion_points": 0,
 			"dominion_lane_wins": 0,
 			"mvp_card_name": "—",
+			"match_won": 0,
+			"lane_activity": _empty_lane_activity(),
 		}
 	for event in events:
 		var event_name := str(event.get("event", ""))
@@ -390,19 +440,66 @@ func _build_player_summaries() -> Dictionary:
 					var metrics := players[player_id] as Dictionary
 					metrics["cards_played"] = int(metrics.get("cards_played", 0)) + 1
 					metrics["energy_spent"] = int(metrics.get("energy_spent", 0)) + int(event.get("energy_cost", 0))
+					_increment_lane_metric(metrics, int(event.get("lane", -1)), "deployments")
+					match str(event.get("card_type", "")):
+						"heroes", "HeroCard":
+							metrics["heroes_played"] = int(metrics.get("heroes_played", 0)) + 1
+						"settlements", "SettlementCard":
+							metrics["settlements_played"] = int(metrics.get("settlements_played", 0)) + 1
+						"special_powers", "SpecialPowerCard":
+							metrics["special_powers_played"] = int(metrics.get("special_powers_played", 0)) + 1
+						"upgrades", "UpgradeCard":
+							metrics["upgrades_played"] = int(metrics.get("upgrades_played", 0)) + 1
 					var card_name := str(event.get("card_name", event.get("card_id", "Kart")))
 					var counts := card_counts[player_id] as Dictionary
 					counts[card_name] = int(counts.get(card_name, 0)) + 1
+			"phase_changed":
+				if player_id in GameRules.PLAYER_IDS and event.has("unspent_energy"):
+					var metrics := players[player_id] as Dictionary
+					var unspent := maxi(0, int(event.get("unspent_energy", 0)))
+					metrics["unspent_energy_at_combat"] = int(metrics.get("unspent_energy_at_combat", 0)) + unspent
+					metrics["combat_phases"] = int(metrics.get("combat_phases", 0)) + 1
+					metrics["max_unspent_energy_at_combat"] = maxi(
+						int(metrics.get("max_unspent_energy_at_combat", 0)),
+						unspent
+					)
+			"attack":
+				if player_id in GameRules.PLAYER_IDS:
+					var metrics := players[player_id] as Dictionary
+					metrics["attacks_declared"] = int(metrics.get("attacks_declared", 0)) + 1
+					var attack_lane := int(event.get("lane", -1))
+					_increment_lane_metric(metrics, attack_lane, "attacks")
+					if bool(event.get("target_is_hq", false)):
+						metrics["hq_attacks"] = int(metrics.get("hq_attacks", 0)) + 1
+						_increment_lane_metric(metrics, attack_lane, "hq_attacks")
+			"card_moved":
+				if player_id in GameRules.PLAYER_IDS:
+					var metrics := players[player_id] as Dictionary
+					metrics["moves"] = int(metrics.get("moves", 0)) + 1
+					var from_lane := int(event.get("from_lane", -1))
+					var to_lane := int(event.get("to_lane", -1))
+					_increment_lane_metric(metrics, from_lane, "moves_out")
+					_increment_lane_metric(metrics, to_lane, "moves_in")
+					if from_lane != to_lane:
+						metrics["cross_lane_moves"] = int(metrics.get("cross_lane_moves", 0)) + 1
 			"effect":
 				if player_id in GameRules.PLAYER_IDS:
 					var metrics := players[player_id] as Dictionary
-					metrics["effect_damage"] = int(metrics.get("effect_damage", 0)) + maxi(0, int(event.get("damage", 0)))
+					metrics["effect_resolutions"] = int(metrics.get("effect_resolutions", 0)) + 1
+					var damage := maxi(0, int(event.get("damage", 0)))
+					metrics["effect_damage"] = int(metrics.get("effect_damage", 0)) + damage
 					metrics["healing"] = int(metrics.get("healing", 0)) + maxi(0, int(event.get("healed", 0)))
+					_increment_lane_metric(metrics, int(event.get("target_lane", -1)), "effect_damage", damage)
+			"effect_card_trigger":
+				if player_id in GameRules.PLAYER_IDS:
+					var metrics := players[player_id] as Dictionary
+					metrics["effect_card_triggers"] = int(metrics.get("effect_card_triggers", 0)) + maxi(1, int(event.get("trigger_delta", 1)))
 			"card_destroyed":
 				var source_player_id := int(event.get("source_player_id", 0))
 				if source_player_id in GameRules.PLAYER_IDS and source_player_id != player_id:
 					var source_metrics := players[source_player_id] as Dictionary
 					source_metrics["cards_destroyed"] = int(source_metrics.get("cards_destroyed", 0)) + 1
+					_increment_lane_metric(source_metrics, int(event.get("lane", -1)), "cards_destroyed")
 
 	for player_id in GameRules.PLAYER_IDS:
 		var opponent_id := _game_manager.get_opponent_id(player_id) if _game_manager else (2 if player_id == 1 else 1)
@@ -426,7 +523,46 @@ func _build_player_summaries() -> Dictionary:
 				best_count = count
 				best_name = str(card_name_variant)
 		metrics["mvp_card_name"] = best_name
+		metrics["match_won"] = 1 if int(_get_end_value("winner_id", 0)) == player_id else 0
 	return players
+
+
+func _empty_lane_activity() -> Dictionary:
+	var activity := {}
+	for lane_id in [CardSlot.Lane.LEFT, CardSlot.Lane.CENTER, CardSlot.Lane.RIGHT]:
+		activity[str(int(lane_id))] = {
+			"deployments": 0,
+			"attacks": 0,
+			"hq_attacks": 0,
+			"moves_in": 0,
+			"moves_out": 0,
+			"effect_damage": 0,
+			"cards_destroyed": 0,
+		}
+	return activity
+
+
+func _increment_lane_metric(metrics: Dictionary, lane_id: int, key: String, amount: int = 1) -> void:
+	if lane_id not in [CardSlot.Lane.LEFT, CardSlot.Lane.CENTER, CardSlot.Lane.RIGHT] or amount <= 0:
+		return
+	var activity_variant: Variant = metrics.get("lane_activity", {})
+	if not activity_variant is Dictionary:
+		return
+	var activity := activity_variant as Dictionary
+	var lane_key := str(lane_id)
+	var lane_variant: Variant = activity.get(lane_key, {})
+	if not lane_variant is Dictionary:
+		return
+	var lane := lane_variant as Dictionary
+	lane[key] = int(lane.get(key, 0)) + amount
+	activity[lane_key] = lane
+	metrics["lane_activity"] = activity
+
+
+func _card_lane(card: BaseCard, fallback: int = -1) -> int:
+	if card and card.current_slot:
+		return int(card.current_slot.lane_id)
+	return fallback
 
 
 func _dictionary_player_value(dictionary: Dictionary, player_id: int, fallback: Variant) -> Variant:

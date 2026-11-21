@@ -15,5 +15,3 @@ dest_files=["res://localization/decks.en.translation", "res://localization/decks
 
 compress=1
 delimiter=0
-unescape_keys=false
-unescape_translations=true

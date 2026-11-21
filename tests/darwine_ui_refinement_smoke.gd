@@ -210,7 +210,7 @@ func _test_battlefield_refinement() -> void:
 	var attacker_slot := battlefield.get_node("Player%dZone/Grid/Slot_F1" % active) as CardSlot
 	var target_slot := battlefield.get_node("Player%dZone/Grid/Slot_F1" % enemy) as CardSlot
 	var attacker := _place_hero(attacker_slot, active, "sovalye")
-	var target := _place_hero(target_slot, enemy, "gladiator")
+	var target := _place_hero(target_slot, enemy, "alev_duellocusu")
 	await process_frame
 
 	_expect(battlefield._can_preview_card(target), "Rakibin sahadaki yüzü açık kartı önizlenebilmeli")
@@ -244,7 +244,7 @@ func _test_battlefield_refinement() -> void:
 	_expect(attacker._progression_badge.anchor_bottom <= 0.10, "Seviye rozeti kart metnini kapatmamalı")
 	_expect(attacker_slot._skill_badge.visible, "Bağlı Beceri küçük kenar rozetiyle görünmeli")
 	attacker.set_combat_state(BaseCard.CombatState.EXHAUSTED)
-	_expect(attacker._frame_panel.modulate == Color.WHITE, "Tükenmişlik tüm kartı karartmamalı")
+	_expect(attacker._frame_panel.modulate.r >= 0.70 and attacker._frame_panel.modulate.r < 1.0, "Tükenmişlik kartı hafifçe solgunlaştırarak okunabilir ayrım sağlamalı")
 	_expect(attacker._combat_state_badge.visible and attacker._combat_state_label.text == "TÜKENDİ", "Kart tek ve tam TÜKENDİ rozeti göstermeli")
 	_expect(not attacker_slot._combat_badge.visible, "Slot üstündeki ikinci TÜK rozeti kaldırılmalı")
 	attacker.set_combat_state(BaseCard.CombatState.READY)
@@ -254,7 +254,7 @@ func _test_battlefield_refinement() -> void:
 
 	_expect(attacker_slot._style_box.border_width_left >= 4, "Grid yuvası kalın taş plaka çerçevesi kullanmalı")
 	_expect(attacker_slot.normal_color.r < 0.16 and attacker_slot.normal_color.g < 0.14, "Grid yuvası koyu taş malzeme paletini kullanmalı")
-	_expect(BattlefieldFeedbackLayer.ATTACK_TELEGRAPH_SECONDS >= 0.50, "Saldırı telegraph süresi okunabilir olmalı")
+	_expect(BattlefieldFeedbackLayer.ATTACK_TELEGRAPH_SECONDS >= 0.38, "Saldırı telegraph süresi seri ve okunabilir olmalı")
 	_expect(manager.advance_phase(active), "Çatışma aşamasına geçilemedi")
 	attacker.set_combat_state(BaseCard.CombatState.READY)
 	var trace_before := battlefield._feedback_layer.attack_animation_count

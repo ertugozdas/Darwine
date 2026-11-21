@@ -19,6 +19,7 @@ signal effect_card_selected(player_id: int, card_id: String, was_automatic: bool
 signal effect_selection_completed
 signal effect_trigger_state_changed(player_id: int, state: Dictionary)
 signal preparation_token_changed(player_id: int, is_available: bool)
+signal tactical_supply_used(player_id: int, energy_cost: int)
 signal hq_health_changed(player_id: int, current_health: int, maximum_health: int)
 signal fatigue_damage_applied(player_id: int, damage: int, failed_draw_count: int)
 signal card_played(card: BaseCard, target: BaseCard)
@@ -447,6 +448,32 @@ func use_preparation_token(player_id: int) -> bool:
 func has_preparation_token(player_id: int) -> bool:
 	return bool(preparation_token_available.get(player_id, false))
 
+func get_tactical_supply_error(player_id: int, hand_size: int = 0) -> String:
+	if not can_play_card(player_id):
+		return TranslationServer.translate("İkmal çekişi yalnızca kendi Hazırlık fazında kullanılabilir.")
+	if has_player_turn_flag(player_id, "tactical_supply"):
+		return TranslationServer.translate("Bu tur zaten İkmal çekişi kullanıldı.")
+	if hand_size >= GameRules.MAX_HAND_SIZE:
+		return TranslationServer.translate("Elin dolu; İkmal çekişi yapılamaz.")
+	if not has_enough_energy(player_id, GameRules.TACTICAL_SUPPLY_ENERGY_COST):
+		return TranslationServer.translate("İkmal çekişi için %d Enerji gerekiyor.") % GameRules.TACTICAL_SUPPLY_ENERGY_COST
+	return ""
+
+func can_use_tactical_supply(player_id: int, hand_size: int = 0) -> bool:
+	return get_tactical_supply_error(player_id, hand_size).is_empty()
+
+func use_tactical_supply(player_id: int, hand_size: int = 0) -> Dictionary:
+	var error := get_tactical_supply_error(player_id, hand_size)
+	if not error.is_empty():
+		return {"success": false, "error": error, "energy_spent": 0}
+	var cost := GameRules.TACTICAL_SUPPLY_ENERGY_COST
+	if not spend_energy(player_id, cost):
+		return {"success": false, "error": TranslationServer.translate("İkmal Enerjisi harcanamadı."), "energy_spent": 0}
+	set_player_turn_flag(player_id, "tactical_supply")
+	tactical_supply_used.emit(player_id, cost)
+	effect_draw_requested.emit(player_id, 1, null)
+	return {"success": true, "energy_spent": cost, "cards_requested": 1}
+
 func get_visible_hand_player_id() -> int:
 	return active_player_id
 
@@ -535,18 +562,11 @@ func _start_turn(player_id: int, is_first_turn_of_match: bool) -> void:
 		round_count = int(ceil(float(turn_count) / 2.0))
 
 	player_personal_turns[player_id] = int(player_personal_turns.get(player_id, 0)) + 1
-	var is_first_players_opening_turn := (
-		player_id == first_player_id
-		and int(player_personal_turns[player_id]) == 1
-	)
-	var is_dominion_opening_turn := (
-		MatchSetup.is_dominion()
-		and int(player_personal_turns[player_id]) == 1
-	)
-	if not is_first_players_opening_turn and not is_dominion_opening_turn:
+	var is_players_opening_turn := int(player_personal_turns[player_id]) == 1
+	if not is_players_opening_turn:
 		player_max_energy[player_id] = min(
-		maximum_energy_limit,
-		int(player_max_energy.get(player_id, starting_energy)) + 1
+			maximum_energy_limit,
+			int(player_max_energy.get(player_id, starting_energy)) + 1
 		)
 
 	player_current_energy[player_id] = int(player_max_energy[player_id])

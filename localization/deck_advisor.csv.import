@@ -1,0 +1,17 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://27khpkun5tr6"
+
+[deps]
+
+files=["res://localization/deck_advisor.en.translation", "res://localization/deck_advisor.de.translation", "res://localization/deck_advisor.fr.translation", "res://localization/deck_advisor.it.translation", "res://localization/deck_advisor.es.translation", "res://localization/deck_advisor.tr.translation"]
+
+source_file="res://localization/deck_advisor.csv"
+dest_files=["res://localization/deck_advisor.en.translation", "res://localization/deck_advisor.de.translation", "res://localization/deck_advisor.fr.translation", "res://localization/deck_advisor.it.translation", "res://localization/deck_advisor.es.translation", "res://localization/deck_advisor.tr.translation"]
+
+[params]
+
+compress=true
+delimiter=0

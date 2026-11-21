@@ -109,7 +109,7 @@ func _test_profile_migration_and_record(summary: Dictionary) -> void:
 	_expect(bool(write_result.get("success", false)), "Eski profil test kaydı yazılmalı")
 	profile_manager.configure_storage_path(PROFILE_PATH, false)
 	var migrated: Dictionary = profile_manager.get_profile()
-	_expect(int(migrated.get("save_version", 0)) == 4, "v3 profil Hakimiyet alanlarıyla v4'e taşınmalı")
+	_expect(int(migrated.get("save_version", 0)) == 5, "v3 profil Hakimiyet ve sefer alanlarıyla güncel v5'e taşınmalı")
 	var migrated_stats := migrated.get("stats", {}) as Dictionary
 	_expect(int(migrated_stats.get("dominion_matches", -1)) == 0, "Eski profilde Hakimiyet maç sayısı sıfırdan başlamalı")
 	var migrated_history := migrated.get("history", []) as Array

@@ -34,6 +34,7 @@ static var player_deck_names: Dictionary = {}
 static var resume_snapshot: Dictionary = {}
 static var save_slot_id := ""
 static var save_slot_name := ""
+static var scenario_context: Dictionary = {}
 
 
 static func configure_local(seed: int = 0) -> void:
@@ -169,6 +170,11 @@ static func set_resume_snapshot(snapshot: Dictionary) -> void:
 	resume_snapshot = snapshot.duplicate(true)
 	match_id = str(snapshot.get("match_id", match_id))
 	set_ruleset(int(snapshot.get("ruleset", ruleset)))
+	var scenario_variant: Variant = snapshot.get("scenario_context", {})
+	if scenario_variant is Dictionary:
+		set_scenario_context(scenario_variant as Dictionary)
+	else:
+		clear_scenario_context()
 
 
 static func configure_from_snapshot(snapshot: Dictionary, slot_id := "", slot_name := "") -> bool:
@@ -251,6 +257,12 @@ static func is_multiplayer_host() -> bool:
 	return match_mode == MatchMode.MULTIPLAYER_HOST
 
 
+## A human-controlled online seat. Dedicated servers are intentionally excluded:
+## they own the simulation but never submit local player input.
+static func is_multiplayer_player() -> bool:
+	return match_mode in [MatchMode.MULTIPLAYER_CLIENT, MatchMode.MULTIPLAYER_HOST]
+
+
 static func set_card_pool_mode(mode: int) -> void:
 	card_pool_mode = (
 		CardPoolMode.ALL_CARDS
@@ -299,11 +311,47 @@ static func set_auto_attack_allowed(allowed: bool) -> void:
 	auto_attack_allowed = allowed
 
 
+static func set_scenario_context(context: Dictionary) -> void:
+	if context.is_empty() or str(context.get("scenario_id", "")).strip_edges().is_empty():
+		clear_scenario_context()
+		return
+	scenario_context = {
+		"campaign_id": str(context.get("campaign_id", "")),
+		"campaign_version": str(context.get("campaign_version", "")),
+		"scenario_id": str(context.get("scenario_id", "")),
+		"scenario_order": maxi(0, int(context.get("scenario_order", 0))),
+		"content_version": maxi(1, int(context.get("content_version", 1))),
+		"lesson": str(context.get("lesson", "")),
+		"objectives": (
+			(context.get("objectives", []) as Array).duplicate(true)
+			if context.get("objectives", []) is Array
+			else []
+		),
+	}
+
+
+static func clear_scenario_context() -> void:
+	scenario_context.clear()
+
+
+static func is_scenario_match() -> bool:
+	return not get_scenario_id().is_empty()
+
+
+static func get_scenario_id() -> String:
+	return str(scenario_context.get("scenario_id", ""))
+
+
+static func get_scenario_context() -> Dictionary:
+	return scenario_context.duplicate(true)
+
+
 static func _reset_match_options() -> void:
 	match_name = DEFAULT_MATCH_NAME
 	turn_duration_seconds = GameRules.TURN_DURATION_SECONDS
 	auto_attack_allowed = true
 	ruleset = Ruleset.SIEGE
+	clear_scenario_context()
 
 
 static func _reset_save_slot_context(enable_autosave: bool) -> void:

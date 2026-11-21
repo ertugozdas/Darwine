@@ -6,9 +6,24 @@ const UI := preload("res://scripts/dark_fantasy_ui.gd")
 
 const RELEASES := [
 	{
+		"version": "0.7",
+		"title": "Commander Campaign and mastery",
+		"stage": "CURRENT",
+		"items": [
+			"Added Commander's Campaign with six fixed tactical scenarios.",
+			"Added live objectives, unlock progression and first-completion Seal rewards.",
+			"Added evidence-based Siege and Dominion match analysis with a critical-lane read.",
+			"Expanded telemetry with real Energy spend and lane-level decisions.",
+			"Added a live Deck Advisor for Energy curve, role coverage and keyword synergy.",
+			"Preserved campaign and match analysis through safe profile and active-match storage.",
+			"Completed English, German, French, Italian, Spanish and Turkish coverage for v0.7.",
+			"Added release-candidate gates for balance, saves, online authority and localization.",
+		],
+	},
+	{
 		"version": "0.6",
 		"title": "Languages and battle preferences",
-		"stage": "CURRENT",
+		"stage": "HISTORY",
 		"items": [
 			"Refined the main-menu title and renamed Card Gallery to Cards.",
 			"Expanded the Commander's Handbook with Siege, Dominion, controls and missing rules.",
@@ -214,7 +229,7 @@ func _build_release_card(release: Dictionary) -> PanelContainer:
 	UI.style_title(version, accent)
 	heading.add_child(version)
 	var title := Label.new()
-	title.text = str(release.get("title", ""))
+	title.text = tr(str(release.get("title", "")))
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	title.add_theme_font_override("font", UI.BODY_BOLD_FONT)
@@ -223,7 +238,7 @@ func _build_release_card(release: Dictionary) -> PanelContainer:
 	heading.add_child(title)
 	if current:
 		var badge := Label.new()
-		badge.text = "CURRENT VERSION"
+		badge.text = tr("CURRENT VERSION")
 		badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		badge.add_theme_font_override("font", UI.BODY_BOLD_FONT)
 		badge.add_theme_font_size_override("font_size", 10)

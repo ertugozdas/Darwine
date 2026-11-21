@@ -1,0 +1,10 @@
+"lang"
+{
+	"Language"	"english"
+	"Tokens"
+	{
+		"#Status_MainMenu"	"At the main menu"
+		"#Status_InLobby"	"Waiting in a Steam lobby"
+		"#Status_InMatch"	"%darwine_mode% — %darwine_match%"
+	}
+}

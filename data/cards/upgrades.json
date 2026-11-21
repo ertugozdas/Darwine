@@ -52,30 +52,6 @@
     "image_url": "res://images/skills/guclendirilmis_temel.png"
   },
   {
-    "id": "gozetleme_duzenegi",
-    "name": "Gözetleme Düzeneği",
-    "description": "Hedef: Dost Yapı. +1 Saldırı ve +2 Can kazandırır.",
-    "energy_cost": 2,
-    "rarity": "RARE",
-    "bonus_attack": 1,
-    "bonus_armor": 0,
-    "bonus_health": 2,
-    "allowed_targets": "Settlement",
-    "image_url": "res://images/skills/gozetleme_duzenegi.png"
-  },
-  {
-    "id": "run_bagi",
-    "name": "Rün Bağı",
-    "description": "Hedef: Dost Kahraman veya Yapı. +1 Saldırı ve +1 Can kazandırır.",
-    "energy_cost": 3,
-    "rarity": "EPIC",
-    "bonus_attack": 1,
-    "bonus_armor": 0,
-    "bonus_health": 1,
-    "allowed_targets": "Any",
-    "image_url": "res://images/skills/run_bagi.png"
-  },
-  {
     "id": "vampir_runu",
     "name": "Vampir Rünü",
     "description": "Hedef: Dost Kahraman. +1 Saldırı, +2 Can ve Can Çalma kazandırır.",
@@ -100,31 +76,6 @@
     "allowed_targets": "Any",
     "granted_tags": ["siege"],
     "image_url": "res://images/skills/kusatma_muhimmati.png"
-  },
-  {
-    "id": "hafif_zirh",
-    "name": "Hafif Zırh",
-    "description": "Hedef: Dost Kahraman. +1 Zırh ve +1 Can kazandırır.",
-    "energy_cost": 1,
-    "rarity": "COMMON",
-    "bonus_attack": 0,
-    "bonus_armor": 1,
-    "bonus_health": 1,
-    "allowed_targets": "Hero",
-    "image_url": "res://images/skills/hafif_zirh.png"
-  },
-  {
-    "id": "ejderha_yemini",
-    "name": "Ejderha Yemini",
-    "description": "Hedef: Dost Kahraman. +2 Saldırı, +2 Can ve Kuşatma kazandırır.",
-    "energy_cost": 3,
-    "rarity": "EPIC",
-    "bonus_attack": 2,
-    "bonus_armor": 0,
-    "bonus_health": 2,
-    "allowed_targets": "Hero",
-    "granted_tags": ["siege"],
-    "image_url": "res://images/skills/ejderha_yemini.png"
   },
   {
     "id": "son_vasiyet",
@@ -153,32 +104,6 @@
     "image_url": "res://images/skills/golge_pelerini.png"
   },
   {
-    "id": "muhafiz_yemini",
-    "name": "Muhafız Yemini",
-    "description": "Hedef: Dost Kahraman. +1 Zırh, +1 Can ve Muhafız kazandırır.",
-    "energy_cost": 1,
-    "rarity": "COMMON",
-    "bonus_attack": 0,
-    "bonus_armor": 1,
-    "bonus_health": 1,
-    "allowed_targets": "Hero",
-    "granted_tags": ["guard"],
-    "image_url": "res://images/skills/celik_kalkan.png"
-  },
-  {
-    "id": "goktasi_kaplama",
-    "name": "Göktaşı Kaplama",
-    "description": "Hedef: Dost Yapı. +1 Saldırı, +2 Can ve Kuşatma kazandırır.",
-    "energy_cost": 2,
-    "rarity": "RARE",
-    "bonus_attack": 1,
-    "bonus_armor": 0,
-    "bonus_health": 2,
-    "allowed_targets": "Settlement",
-    "granted_tags": ["siege"],
-    "image_url": "res://images/skills/kusatma_muhimmati.png"
-  },
-  {
     "id": "gizli_pusula",
     "name": "Gizli Pusula",
     "description": "Hedef: Dost Kahraman. +1 Saldırı, +1 Can ve Faz Yürüyüşü kazandırır.",
@@ -189,7 +114,7 @@
     "bonus_health": 1,
     "allowed_targets": "Hero",
     "granted_tags": ["phasewalk"],
-    "image_url": "res://images/skills/golge_pelerini.png"
+    "image_url": "res://images/skills/run_bagi.png"
   },
   {
     "id": "kadim_kabuk",

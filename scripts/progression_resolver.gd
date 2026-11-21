@@ -3,6 +3,100 @@ class_name ProgressionResolver extends RefCounted
 ## Owns experience awards, level validation, irreversible branch selection and
 ## application of data-driven level bonuses.
 
+static func get_effective_level_paths(card: BaseCard) -> Dictionary:
+	if not card or card.is_headquarters():
+		return {}
+	if card.level_paths.size() == 2:
+		return card.level_paths
+	if card is HeroCard:
+		return {
+			"hucum": {
+				"name": "Hücum",
+				"level_2": {
+					"description": "+1 Saldırı ve Kahramanlara +1 hasar.",
+					"bonus_attack": 1,
+					"trait_value_bonuses": {"hero_damage_bonus": 1},
+				},
+				"level_3": {
+					"description": "+2 Saldırı ve +1 azami Can.",
+					"bonus_attack": 2,
+					"bonus_health": 1,
+				},
+			},
+			"tahkimat": {
+				"name": "Tahkimat",
+				"level_2": {
+					"description": "+1 Zırh ve +2 azami Can.",
+					"bonus_armor": 1,
+					"bonus_health": 2,
+				},
+				"level_3": {
+					"description": "+1 Zırh, +2 Can ve Korumalı 2.",
+					"bonus_armor": 1,
+					"bonus_health": 2,
+					"grant_protection": 2,
+				},
+			},
+		}
+	if card is SettlementCard:
+		var settlement := card as SettlementCard
+		if settlement.attack > 0:
+			return {
+				"tahkimat": {
+					"name": "Tahkimat",
+					"level_2": {
+						"description": "+3 azami ve mevcut Can.",
+						"bonus_health": 3,
+					},
+					"level_3": {
+						"description": "+3 Can ve Korumalı 2.",
+						"bonus_health": 3,
+						"grant_protection": 2,
+					},
+				},
+				"guc": {
+					"name": "Ateş Gücü",
+					"level_2": {
+						"description": "+1 Saldırı ve +1 azami Can.",
+						"bonus_attack": 1,
+						"bonus_health": 1,
+					},
+					"level_3": {
+						"description": "+2 Saldırı.",
+						"bonus_attack": 2,
+					},
+				},
+			}
+		return {
+			"tahkimat": {
+				"name": "Tahkimat",
+				"level_2": {
+					"description": "+3 azami ve mevcut Can.",
+					"bonus_health": 3,
+				},
+				"level_3": {
+					"description": "+3 Can ve Korumalı 2.",
+					"bonus_health": 3,
+					"grant_protection": 2,
+				},
+			},
+			"himaye": {
+				"name": "Himaye",
+				"level_2": {
+					"description": "+2 Can ve Korumalı 1.",
+					"bonus_health": 2,
+					"grant_protection": 1,
+				},
+				"level_3": {
+					"description": "+2 Can ve Korumalı 2.",
+					"bonus_health": 2,
+					"grant_protection": 2,
+				},
+			},
+		}
+	return {}
+
+
 static func get_upgrade_start_error(game_manager: GameManager, card: BaseCard) -> String:
 	if not game_manager or not game_manager.is_game_active or not game_manager.is_match_started:
 		return "Maç aktif değil."
@@ -18,7 +112,8 @@ static func get_upgrade_start_error(game_manager: GameManager, card: BaseCard) -
 		return "Yalnızca aktif oyuncunun kartı yükseltilebilir."
 	if card.card_level >= GameRules.MAX_CARD_LEVEL:
 		return "Bu kart zaten azami seviyede."
-	if card.level_paths.size() != 2:
+	var paths := get_effective_level_paths(card)
+	if paths.size() != 2:
 		return "Bu kart için tam iki yükseltme dalı tanımlı değil."
 
 	var next_level := card.card_level + 1
@@ -30,7 +125,7 @@ static func get_upgrade_start_error(game_manager: GameManager, card: BaseCard) -
 		return "Seviye %d için %d Enerji gerekiyor." % [next_level, energy_cost]
 	if card.card_level == 2 and (
 		card.selected_branch_id.is_empty()
-		or not card.level_paths.has(card.selected_branch_id)
+		or not paths.has(card.selected_branch_id)
 	):
 		return "Seçili yükseltme dalı geçersiz."
 	return ""
@@ -43,13 +138,14 @@ static func get_upgrade_error(
 	var start_error := get_upgrade_start_error(game_manager, card)
 	if not start_error.is_empty():
 		return start_error
+	var paths := get_effective_level_paths(card)
 	var normalized_branch := branch_id.strip_edges().to_lower()
-	if normalized_branch.is_empty() or not card.level_paths.has(normalized_branch):
+	if normalized_branch.is_empty() or not paths.has(normalized_branch):
 		return "Geçerli bir yükseltme dalı seç."
 	if card.card_level == 2 and normalized_branch != card.selected_branch_id:
 		return "Seviye 2'de seçilen yükseltme dalı değiştirilemez."
 
-	var branch_variant: Variant = card.level_paths.get(normalized_branch, {})
+	var branch_variant: Variant = paths.get(normalized_branch, {})
 	if not branch_variant is Dictionary:
 		return "Yükseltme dalı verisi geçersiz."
 	var branch := branch_variant as Dictionary
@@ -62,9 +158,10 @@ static func get_available_branches(card: BaseCard) -> Array[Dictionary]:
 	var branches: Array[Dictionary] = []
 	if not card:
 		return branches
-	for branch_key_variant in card.level_paths.keys():
+	var paths := get_effective_level_paths(card)
+	for branch_key_variant in paths.keys():
 		var branch_id := str(branch_key_variant).strip_edges().to_lower()
-		var branch_variant: Variant = card.level_paths.get(branch_id, {})
+		var branch_variant: Variant = paths.get(branch_id, {})
 		if not branch_variant is Dictionary:
 			continue
 		var branch := branch_variant as Dictionary
@@ -92,7 +189,8 @@ static func resolve_upgrade(
 	if not game_manager.spend_energy(card.owner_id, energy_cost):
 		return {"success": false, "error": "Yükseltme Enerjisi harcanamadı.", "energy_spent": 0}
 
-	var branch := card.level_paths[normalized_branch] as Dictionary
+	var paths := get_effective_level_paths(card)
+	var branch := paths[normalized_branch] as Dictionary
 	var level_definition := branch["level_%d" % next_level] as Dictionary
 	_apply_level_definition(card, level_definition)
 	if card.card_level == 1:
@@ -258,6 +356,9 @@ static func _apply_level_definition(card: BaseCard, definition: Dictionary) -> v
 		for key_variant in effect_bonuses.keys():
 			var key := str(key_variant)
 			card.effect_params[key] = int(card.effect_params.get(key, 0)) + int(effect_bonuses[key_variant])
+	var grant_protection := _get_int(definition, "grant_protection", 0)
+	if grant_protection > 0:
+		card.apply_status("protected", grant_protection)
 	card.refresh_runtime_badges()
 	card.preview_state_changed.emit()
 

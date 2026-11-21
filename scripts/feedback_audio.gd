@@ -151,7 +151,10 @@ func play_event(event_id: String) -> bool:
 	player.stop()
 	player.stream = _streams[normalized] as AudioStream
 	player.volume_db = float(spec.get("volume", -18.0))
-	player.pitch_scale = 1.0
+	if normalized in ["attack", "damage", "critical", "draw", "move", "ability", "block", "armor_break", "destroy", "deploy"]:
+		player.pitch_scale = randf_range(0.94, 1.06)
+	else:
+		player.pitch_scale = 1.0
 	player.play()
 	last_event_id = normalized
 	event_play_count += 1
@@ -164,18 +167,26 @@ func _build_tone(frequencies: Array[float], duration: float) -> AudioStreamWAV:
 	var data := PackedByteArray()
 	data.resize(sample_count * 2)
 	var tone_count := maxi(1, frequencies.size())
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(round((frequencies[0] if not frequencies.is_empty() else 220.0) * 97.0 + safe_duration * 1000.0))
+	var is_percussive := (not frequencies.is_empty() and frequencies[0] <= 240.0)
 	for sample_index in range(sample_count):
 		var time := float(sample_index) / float(MIX_RATE)
 		var progress := float(sample_index) / float(maxi(1, sample_count - 1))
-		var attack_envelope := minf(1.0, progress / 0.08)
-		var release_envelope := pow(maxf(0.0, 1.0 - progress), 1.8)
+		var attack_envelope := minf(1.0, progress / (0.03 if is_percussive else 0.07))
+		var release_envelope := pow(maxf(0.0, 1.0 - progress), 2.1 if is_percussive else 1.7)
 		var envelope := attack_envelope * release_envelope
 		var sample_value := 0.0
 		for frequency_index in range(frequencies.size()):
 			var base_frequency := frequencies[frequency_index]
-			var glide := lerpf(1.08, 0.92, progress)
-			sample_value += sin(TAU * base_frequency * glide * time + float(frequency_index) * 0.35)
-		sample_value = (sample_value / float(tone_count)) * envelope * 0.42
+			var glide := lerpf(1.12, 0.86, progress) if is_percussive else lerpf(1.04, 0.96, progress)
+			var phase := TAU * base_frequency * glide * time + float(frequency_index) * 0.35
+			sample_value += sin(phase) * 0.72 + sin(phase * 2.0) * 0.20 + sin(phase * 3.0) * 0.08
+		sample_value /= float(tone_count)
+		if is_percussive and progress < 0.28:
+			var transient_env := pow(1.0 - (progress / 0.28), 2.0)
+			sample_value += rng.randf_range(-1.0, 1.0) * transient_env * 0.34
+		sample_value = sample_value * envelope * 0.44
 		var encoded_sample := clampi(int(round(sample_value * 32767.0)), -32768, 32767)
 		data.encode_s16(sample_index * 2, encoded_sample)
 

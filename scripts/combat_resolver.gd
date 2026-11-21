@@ -58,6 +58,114 @@ static func get_legal_target_slot(battlefield: Node, game_manager: GameManager, 
 static func is_legal_target(battlefield: Node, game_manager: GameManager, attacker: BaseCard, target_slot: CardSlot) -> bool:
 	return target_slot != null and target_slot == get_legal_target_slot(battlefield, game_manager, attacker)
 
+
+static func preview_attack(
+	battlefield: Node,
+	game_manager: GameManager,
+	attacker: BaseCard,
+	target_slot: CardSlot
+) -> Dictionary:
+	if not battlefield or not game_manager or not attacker or not target_slot:
+		return {}
+	if not target_slot.is_occupied or not target_slot.occupied_card is BaseCard:
+		return {}
+	var target := target_slot.occupied_card as BaseCard
+	var effective_target := target
+	var guard_redirected := false
+	if target is SettlementCard and not target.is_headquarters() and target.current_slot:
+		var lane_id := int(target.current_slot.lane_id)
+		for node in game_manager.get_tree().get_nodes_in_group(BaseCard.GROUP_NAME):
+			var candidate := node as HeroCard
+			if (
+				candidate
+				and candidate.owner_id == target.owner_id
+				and candidate.current_slot
+				and int(candidate.current_slot.lane_id) == lane_id
+				and candidate.is_guard_available()
+				and candidate.get_current_health() > 0
+				and not candidate.is_queued_for_deletion()
+			):
+				effective_target = candidate
+				guard_redirected = true
+				break
+
+	var total := attacker.get_attack_value()
+	if attacker is HeroCard and attacker.has_trait("last_breath"):
+		if attacker.get_current_health() * 2 <= attacker.get_max_health():
+			total += attacker.get_trait_value("last_breath_damage", 2)
+	if attacker is HeroCard and attacker.current_slot:
+		var lane := int(attacker.current_slot.lane_id)
+		var war_banner_bonus := 0
+		for node in game_manager.get_tree().get_nodes_in_group(BaseCard.GROUP_NAME):
+			var ally := node as HeroCard
+			if ally and ally.owner_id == attacker.owner_id and ally.current_slot and int(ally.current_slot.lane_id) == lane and ally.has_trait("war_banner") and not ally.is_queued_for_deletion():
+				war_banner_bonus = maxi(war_banner_bonus, ally.get_trait_value("war_banner_damage", 1))
+		total += war_banner_bonus
+	if effective_target is HeroCard:
+		total += attacker.get_trait_value("hero_damage_bonus", 0)
+	if effective_target is SettlementCard and attacker.has_trait("siege"):
+		total += attacker.get_trait_value("siege_bonus", 2)
+		if game_manager.get_selected_effect_card(attacker.owner_id) == "kusatma_plani" and not game_manager.has_effect_triggered(attacker.owner_id, "siege_plan"):
+			total += 1
+	elif effective_target is SettlementCard:
+		if game_manager.get_selected_effect_card(attacker.owner_id) == "kusatma_plani" and not game_manager.has_effect_triggered(attacker.owner_id, "siege_plan"):
+			total += 1
+
+	# Enemy reductions: Eclipse, Bulwark, Last Stand
+	if attacker.current_slot:
+		var attacker_lane := int(attacker.current_slot.lane_id)
+		var eclipse_red := 0
+		for node in game_manager.get_tree().get_nodes_in_group(BaseCard.GROUP_NAME):
+			var enemy := node as HeroCard
+			if enemy and enemy.owner_id == effective_target.owner_id and enemy.current_slot and int(enemy.current_slot.lane_id) == attacker_lane and enemy.has_trait("eclipse") and not enemy.is_queued_for_deletion():
+				eclipse_red = maxi(eclipse_red, enemy.get_trait_value("eclipse_reduction", 1))
+		total = maxi(0, total - eclipse_red)
+	if effective_target is HeroCard and effective_target.has_trait("bulwark") and bool(effective_target.trait_runtime.get("bulwark_available", true)):
+		total = maxi(0, total - effective_target.get_trait_value("bulwark_reduction", 2))
+	if effective_target.is_headquarters() and total > 0:
+		if game_manager.get_selected_effect_card(effective_target.owner_id) == "son_direnis" and not game_manager.has_effect_triggered(effective_target.owner_id, "last_stand"):
+			total = maxi(0, total - 1)
+
+	var protection := effective_target.get_status_amount("protected")
+	var blocked := mini(total, protection)
+	var remaining := maxi(0, total - blocked)
+	var armor_dmg := 0
+	var health_dmg := remaining
+	if effective_target is HeroCard:
+		var target_hero := effective_target as HeroCard
+		var pierce := mini(attacker.get_trait_value("armor_pierce", 0), remaining)
+		var non_pierce := maxi(0, remaining - pierce)
+		armor_dmg = mini(target_hero.armor, non_pierce)
+		health_dmg = pierce + maxi(0, non_pierce - armor_dmg)
+
+	var will_destroy := health_dmg >= effective_target.get_current_health() and health_dmg > 0
+	var retaliate_dmg := 0
+	if not will_destroy and effective_target.has_trait("retaliate"):
+		retaliate_dmg = maxi(1, effective_target.get_trait_value("retaliate_damage", 1))
+
+	var label := "-%d" % remaining
+	if remaining == 0 and blocked > 0:
+		label = TranslationServer.translate("ENGEL")
+	elif will_destroy:
+		label = TranslationServer.translate("-%d YOK!") % remaining
+	if guard_redirected:
+		label = TranslationServer.translate("MUHAFIZ %s") % label
+	elif retaliate_dmg > 0:
+		label = "%s (%s-%d)" % [label, TranslationServer.translate("M"), retaliate_dmg]
+
+	return {
+		"raw_damage": total,
+		"final_damage": remaining,
+		"blocked_damage": blocked,
+		"armor_damage": armor_dmg,
+		"health_damage": health_dmg,
+		"will_destroy": will_destroy,
+		"guard_redirected": guard_redirected,
+		"guard_target": effective_target if guard_redirected else null,
+		"retaliate_damage": retaliate_dmg,
+		"summary_label": label,
+	}
+
 static func resolve_attack(
 	battlefield: Node,
 	game_manager: GameManager,

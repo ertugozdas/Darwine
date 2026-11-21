@@ -343,8 +343,8 @@ func _test_cost_discounts_and_supply_line() -> void:
 	_expect(supply_manager.has_effect_triggered(1, "supply_line_checked") and supply_manager.has_effect_triggered(1, "supply_line"), "İkmal Hattı kontrol ve gerçek tetik durumlarını ayırmadı")
 	_expect(int(supply_manager.effect_trigger_totals.get(1, 0)) == 1, "İkmal Hattı gerçek çekişi bir kez sayılmadı")
 
-	# If the first positive spend does not empty Energy, the check is consumed
-	# without a trigger; a later zeroing spend must not draw or increment totals.
+	# When the first spend leaves remaining Energy, a subsequent action that
+	# empties Energy in the same turn triggers Supply Line cleanly once.
 	supply_manager.call("_reset_effect_trigger_ledger")
 	supply_manager.player_current_energy[1] = 2
 	_expect(supply_manager.spend_energy(1, 1), "İkmal Hattı ilk kontrol harcaması yapılamadı")
@@ -353,12 +353,11 @@ func _test_cost_discounts_and_supply_line() -> void:
 	var later_zero_result := EffectResolver.resolve_energy_action(supply_manager, supply_card, "hero", 1)
 	_expect(
 		not bool(non_zero_result.get("triggered", true))
-		and bool(non_zero_result.get("checked", false))
-		and not bool(later_zero_result.get("triggered", true))
-		and int(requested_draws[0]) == 1,
-		"İkmal Hattı yalnızca ilk pozitif Enerji harcamasını değerlendirmedi"
+		and bool(later_zero_result.get("triggered", false))
+		and int(requested_draws[0]) == 2,
+		"İkmal Hattı turda Enerjiyi sıfırlayan hamlede tetiklenmeli"
 	)
-	_expect(int(supply_manager.effect_trigger_totals.get(1, 0)) == 1, "İkmal Hattı sonuçsuz kontrolü tetik sayacına ekledi")
+	_expect(int(supply_manager.effect_trigger_totals.get(1, 0)) == 2, "İkmal Hattı ikinci turdaki gerçek tetiği kaydetmeli")
 	supply_card.free()
 	supply_board.queue_free()
 	await process_frame
@@ -475,7 +474,7 @@ func _cleanup_environment(environment: Dictionary) -> void:
 	await process_frame
 
 
-func _place_hero(slot: CardSlot, owner_id: int, card_id: String = "gladiator") -> HeroCard:
+func _place_hero(slot: CardSlot, owner_id: int, card_id: String = "alev_duellocusu") -> HeroCard:
 	var card := HeroCard.new()
 	card.owner_id = owner_id
 	card.card_id = card_id

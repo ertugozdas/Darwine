@@ -10,17 +10,20 @@ const STARTING_HAND_SIZE := 5
 const MAX_HAND_SIZE := 8
 const CARDS_DRAWN_PER_TURN := 1
 ## A normal turn still draws one card. If that draw would leave the active
-## player below this amount, BattlefieldUI grants catch-up draws so a player
-## never spends several turns without meaningful choices.
-const MINIMUM_TURN_START_HAND := 3
+## player below this amount (while cards remain in deck), BattlefieldUI grants
+## catch-up draws up to this floor. Empty decks suffer at most one fatigue tick
+## per turn start.
+const MINIMUM_TURN_START_HAND := 2
 
 const STARTING_ENERGY := 3
 const MAX_ENERGY := 10
 const PREPARATION_TOKEN_ENERGY := 1
+const TACTICAL_SUPPLY_ENERGY_COST := 2
 ## The player acting second begins with a one-hit Headquarters ward. It absorbs
 ## opening initiative without changing the shared 30-Health win condition.
 const SECOND_PLAYER_HQ_PROTECTION := 1
 const MOVEMENT_ENERGY_COST := 1
+const SAME_LANE_MOVEMENT_ENERGY_COST := 0
 const TURN_DURATION_SECONDS := 30.0
 
 const MAX_CARD_LEVEL := 3

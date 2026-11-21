@@ -197,20 +197,33 @@ func _execute_action(action: Dictionary) -> Dictionary:
 				"success": _game_manager.use_preparation_token(player_id),
 				"error": "Hazırlık Jetonu kullanılamadı.",
 			}
+		"use_tactical_supply":
+			var hand_size := _battlefield.get_hand_cards(player_id).size()
+			return _game_manager.use_tactical_supply(player_id, hand_size)
 		"play_card":
-			return _battlefield.play_hand_card_to_slot(
-				action.get("card") as BaseCard,
-				action.get("target_slot") as CardSlot
-			)
+			var played_card := action.get("card") as BaseCard
+			var target_slot := action.get("target_slot") as CardSlot
+			var play_result := _battlefield.play_hand_card_to_slot(played_card, target_slot)
+			if bool(play_result.get("success", false)) and played_card and is_instance_valid(played_card) and not MatchSetup.fast_mode:
+				if _battlefield.has_method("animate_ai_card_deploy"):
+					_battlefield.animate_ai_card_deploy(played_card, player_id)
+			return play_result
 		"play_effect":
+			var effect_card := action.get("card") as BaseCard
+			var effect_slot := action.get("target_slot") as CardSlot
+			if effect_card and not MatchSetup.fast_mode and _battlefield.has_method("show_ai_card_spotlight"):
+				await _battlefield.show_ai_card_spotlight(effect_card, effect_slot)
 			return EffectResolver.resolve_targeted_card(
 				_game_manager,
-				action.get("card") as BaseCard,
-				action.get("target_slot") as CardSlot
+				effect_card,
+				effect_slot
 			)
 		"play_hand_tactic":
+			var tactic_card := action.get("card") as SpecialPowerCard
+			if tactic_card and not MatchSetup.fast_mode and _battlefield.has_method("show_ai_card_spotlight"):
+				await _battlefield.show_ai_card_spotlight(tactic_card, null)
 			return await _battlefield.resolve_hand_tactic(
-				action.get("card") as SpecialPowerCard,
+				tactic_card,
 				action.get("hand_target") as BaseCard
 			)
 		"move":

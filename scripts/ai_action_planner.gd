@@ -238,6 +238,9 @@ func _generate_preparation_actions(player_id: int, actions: Array[Dictionary]) -
 					"target_slot": target_slot,
 				})
 
+	if has_drawable_card and _game_manager.can_use_tactical_supply(player_id, hand.size()):
+		actions.append({"type": "use_tactical_supply", "player_id": player_id})
+
 	for card in _battlefield.get_board_cards(player_id):
 		if card is HeroCard:
 			for target_slot in MovementResolver.get_legal_destination_slots(_game_manager, card):
@@ -285,6 +288,15 @@ func _score_action(action: Dictionary, difficulty: int) -> float:
 	match action_type:
 		"use_preparation_token":
 			return 24.0
+		"use_tactical_supply":
+			var player_id := int(action.get("player_id", 0))
+			var hand_size := _battlefield.get_hand_cards(player_id).size()
+			var energy := _game_manager.get_available_energy(player_id)
+			if energy >= 4 and hand_size <= 5:
+				return 18.0 + float(5 - hand_size) * 3.0
+			if hand_size <= 2 and energy >= GameRules.TACTICAL_SUPPLY_ENERGY_COST:
+				return 14.0
+			return -2.0
 		"play_card":
 			return _score_play(action, hard)
 		"play_effect":
@@ -495,7 +507,7 @@ func _score_move(action: Dictionary, hard: bool) -> float:
 	if not card or not slot:
 		return -INF
 	var score := -4.0
-	score -= MovementResolver.get_movement_energy_cost(card, _game_manager) * (2.0 if hard else 1.5)
+	score -= MovementResolver.get_movement_energy_cost(card, _game_manager, slot) * (2.0 if hard else 1.5)
 	if card.has_trait("wanderer"):
 		score += 18.0
 	if card.has_trait("phasewalk"):
@@ -510,13 +522,13 @@ func _score_move(action: Dictionary, hard: bool) -> float:
 			)
 			if storm_targets > 0:
 				score += 12.0 + card.get_trait_value("stormstep_damage", 1) * 5.0
-			if card.has_trait("spore_drift"):
-				var spore_targets := _count_lane_cards(
-					_game_manager.get_opponent_id(card.owner_id),
-					int(slot.lane_id)
-				)
-				if spore_targets > 0:
-					score += 9.0 + card.get_trait_value("spore_drift_poison", 1) * 4.0
+		if card.has_trait("spore_drift"):
+			var spore_targets := _count_lane_cards(
+				_game_manager.get_opponent_id(card.owner_id),
+				int(slot.lane_id)
+			)
+			if spore_targets > 0:
+				score += 9.0 + card.get_trait_value("spore_drift_poison", 1) * 4.0
 		for ally in _battlefield.get_board_cards(card.owner_id):
 			if (
 				ally is SettlementCard

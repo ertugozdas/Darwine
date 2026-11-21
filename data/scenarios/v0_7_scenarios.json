@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "release_version": "0.7",
+  "campaign_id": "komutan_seferi",
+  "campaign_title": "Komutan Seferi",
+  "scenarios": [
+    {
+      "id": "cepheye_ilk_adim",
+      "order": 1,
+      "content_version": 1,
+      "title": "Cepheye İlk Adım",
+      "summary": "Kahraman ve Yapıları doğru yuvalara yerleştirerek ilk savunma hattını kur.",
+      "lesson": "deployment",
+      "ruleset": "siege",
+      "setup": {
+        "player_deck_id": "muhafiz_hatti",
+        "opponent_deck_id": "muhafiz_hatti",
+        "ai_difficulty": "easy",
+        "forced_first_player_id": 1,
+        "turn_duration_seconds": 120,
+        "auto_attack_allowed": false,
+        "player_effect_card_id": "",
+        "opponent_effect_card_id": ""
+      },
+      "objectives": [
+        {"id": "kahraman_oyna", "metric": "heroes_played", "operator": "at_least", "target": 1, "required": true},
+        {"id": "yapi_oyna", "metric": "settlements_played", "operator": "at_least", "target": 1, "required": true},
+        {"id": "maci_kazan", "metric": "match_won", "operator": "equals", "target": 1, "required": true}
+      ],
+      "unlock": {"requires": []},
+      "reward": {"kind": "seals", "amount": 10}
+    },
+    {
+      "id": "enerji_disiplini",
+      "order": 2,
+      "content_version": 1,
+      "title": "Enerji Disiplini",
+      "summary": "Enerji eğrisini takip et ve her tur anlamlı bir hazırlık planı kur.",
+      "lesson": "energy",
+      "ruleset": "siege",
+      "setup": {
+        "player_deck_id": "firtina_hucumu",
+        "opponent_deck_id": "muhafiz_hatti",
+        "ai_difficulty": "easy",
+        "forced_first_player_id": 2,
+        "turn_duration_seconds": 120,
+        "auto_attack_allowed": false,
+        "player_effect_card_id": "oncu_doktrini",
+        "opponent_effect_card_id": "yapi_ustalari"
+      },
+      "objectives": [
+        {"id": "enerji_harca", "metric": "energy_spent", "operator": "at_least", "target": 15, "required": true},
+        {"id": "maci_kazan", "metric": "match_won", "operator": "equals", "target": 1, "required": true}
+      ],
+      "unlock": {"requires": ["cepheye_ilk_adim"]},
+      "reward": {"kind": "seals", "amount": 12}
+    },
+    {
+      "id": "gedik_ac",
+      "order": 3,
+      "content_version": 1,
+      "title": "Gedik Aç",
+      "summary": "Hedef sırasını temizle, bir koridoru aç ve rakip Merkeze ulaş.",
+      "lesson": "open_lane",
+      "ruleset": "siege",
+      "setup": {
+        "player_deck_id": "firtina_hucumu",
+        "opponent_deck_id": "muhafiz_hatti",
+        "ai_difficulty": "medium",
+        "forced_first_player_id": 1,
+        "turn_duration_seconds": 120,
+        "auto_attack_allowed": false,
+        "player_effect_card_id": "kusatma_plani",
+        "opponent_effect_card_id": "son_direnis"
+      },
+      "objectives": [
+        {"id": "merkeze_saldir", "metric": "hq_attacks", "operator": "at_least", "target": 1, "required": true},
+        {"id": "merkez_hasari", "metric": "hq_damage", "operator": "at_least", "target": 8, "required": true},
+        {"id": "maci_kazan", "metric": "match_won", "operator": "equals", "target": 1, "required": true}
+      ],
+      "unlock": {"requires": ["enerji_disiplini"]},
+      "reward": {"kind": "seals", "amount": 14}
+    },
+    {
+      "id": "kanat_degistir",
+      "order": 4,
+      "content_version": 2,
+      "title": "Kanat Değiştir",
+      "summary": "Baskıyı komşu koridora taşıyarak kilitlenen cepheyi yeniden şekillendir.",
+      "lesson": "movement",
+      "ruleset": "siege",
+      "setup": {
+        "player_deck_id": "runik_kontrol",
+        "opponent_deck_id": "muhafiz_hatti",
+        "ai_difficulty": "medium",
+        "forced_first_player_id": 1,
+        "turn_duration_seconds": 120,
+        "auto_attack_allowed": false,
+        "player_effect_card_id": "kanat_manevrasi",
+        "opponent_effect_card_id": "oncu_doktrini"
+      },
+      "objectives": [
+        {"id": "koridor_degistir", "metric": "cross_lane_moves", "operator": "at_least", "target": 2, "required": true},
+        {"id": "maci_kazan", "metric": "match_won", "operator": "equals", "target": 1, "required": true}
+      ],
+      "unlock": {"requires": ["gedik_ac"]},
+      "reward": {"kind": "seals", "amount": 16}
+    },
+    {
+      "id": "doktrin_sinavi",
+      "order": 5,
+      "content_version": 1,
+      "title": "Doktrin Sınavı",
+      "summary": "Etki Kartının pasif planını gerçek kart hamleleriyle birlikte çalıştır.",
+      "lesson": "effects",
+      "ruleset": "siege",
+      "setup": {
+        "player_deck_id": "runik_kontrol",
+        "opponent_deck_id": "muhafiz_hatti",
+        "ai_difficulty": "hard",
+        "forced_first_player_id": 1,
+        "turn_duration_seconds": 150,
+        "auto_attack_allowed": false,
+        "player_effect_card_id": "koruyucu_yemin",
+        "opponent_effect_card_id": "kanat_manevrasi"
+      },
+      "objectives": [
+        {"id": "etki_kartini_tetikle", "metric": "effect_card_triggers", "operator": "at_least", "target": 3, "required": true},
+        {"id": "maci_kazan", "metric": "match_won", "operator": "equals", "target": 1, "required": true}
+      ],
+      "unlock": {"requires": ["kanat_degistir"]},
+      "reward": {"kind": "seals", "amount": 18}
+    },
+    {
+      "id": "uc_koridor_hakimiyeti",
+      "order": 6,
+      "content_version": 2,
+      "title": "Üç Koridor Hakimiyeti",
+      "summary": "Koridor kontrolünü raundlar boyunca koruyarak Hakimiyet hedefine ulaş.",
+      "lesson": "dominion",
+      "ruleset": "dominion",
+      "setup": {
+        "player_deck_id": "runik_kontrol",
+        "opponent_deck_id": "muhafiz_hatti",
+        "ai_difficulty": "hard",
+        "forced_first_player_id": 1,
+        "turn_duration_seconds": 150,
+        "auto_attack_allowed": false,
+        "player_effect_card_id": "ilkel_uyum",
+        "opponent_effect_card_id": "gizli_cephanelik"
+      },
+      "objectives": [
+        {"id": "hakimiyet_hedefi", "metric": "dominion_score", "operator": "at_least", "target": 12, "required": true},
+        {"id": "maci_kazan", "metric": "match_won", "operator": "equals", "target": 1, "required": true}
+      ],
+      "unlock": {"requires": ["doktrin_sinavi"]},
+      "reward": {"kind": "seals", "amount": 25}
+    }
+  ]
+}

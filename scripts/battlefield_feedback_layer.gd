@@ -1,16 +1,17 @@
 class_name BattlefieldFeedbackLayer extends Control
 
-const ATTACK_TELEGRAPH_SECONDS := 0.92
-const ATTACK_HOLD_SECONDS := 0.20
-const ATTACK_IMPACT_SECONDS := 0.62
+const ATTACK_TELEGRAPH_SECONDS := 0.42
+const ATTACK_HOLD_SECONDS := 0.12
+const ATTACK_IMPACT_SECONDS := 0.36
 const IMPACT_HIT := "hit"
 const IMPACT_CRITICAL := "critical"
 const IMPACT_BLOCKED := "blocked"
 const IMPACT_ARMOR_BREAK := "armor_break"
 
-## Draws persistent open-lane routes and short-lived attack traces. The layer
-## never receives pointer input and therefore cannot obstruct card interaction.
+## Draws persistent open-lane routes and short-lived attack traces, spell beams,
+## lane waves, and multi-target impacts. Never receives pointer input.
 var _open_paths: Array[Dictionary] = []
+var _transient_effects: Array[Dictionary] = []
 var _attack_from := Vector2.ZERO
 var _attack_to := Vector2.ZERO
 var _attack_color := Color(1.0, 0.72, 0.24, 1.0)
@@ -122,7 +123,82 @@ func stop_all_feedback() -> void:
 		_impact_tween.kill()
 	_attack_tween = null
 	_impact_tween = null
+	_transient_effects.clear()
 	_clear_attack_path()
+
+
+func play_spell_beam(from_point: Vector2, to_point: Vector2, color: Color, width: float = 5.0, duration: float = 0.48) -> void:
+	var effect := {
+		"type": "beam",
+		"from": from_point,
+		"to": to_point,
+		"color": color,
+		"width": width,
+		"progress": 0.0,
+		"alpha": 1.0,
+	}
+	_transient_effects.append(effect)
+	var tw := create_tween().bind_node(self)
+	tw.tween_method(func(v: float):
+		effect["progress"] = v
+		queue_redraw()
+	, 0.0, 1.0, duration * 0.45).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	tw.tween_method(func(v: float):
+		effect["alpha"] = v
+		queue_redraw()
+	, 1.0, 0.0, duration * 0.55)
+	tw.tween_callback(func():
+		_transient_effects.erase(effect)
+		queue_redraw()
+	)
+
+
+func play_lane_wave(start_point: Vector2, end_point: Vector2, color: Color, duration: float = 0.52) -> void:
+	var effect := {
+		"type": "lane_wave",
+		"from": start_point,
+		"to": end_point,
+		"color": color,
+		"progress": 0.0,
+		"alpha": 1.0,
+	}
+	_transient_effects.append(effect)
+	var tw := create_tween().bind_node(self)
+	tw.tween_method(func(v: float):
+		effect["progress"] = v
+		effect["alpha"] = 1.0 - maxf(0.0, (v - 0.55) / 0.45)
+		queue_redraw()
+	, 0.0, 1.0, duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_callback(func():
+		_transient_effects.erase(effect)
+		queue_redraw()
+	)
+
+
+func play_secondary_burst(center: Vector2, color: Color, kind: String = "ring", duration: float = 0.44) -> void:
+	var effect := {
+		"type": "burst",
+		"center": center,
+		"color": color,
+		"kind": kind,
+		"progress": 0.0,
+	}
+	_transient_effects.append(effect)
+	var tw := create_tween().bind_node(self)
+	tw.tween_method(func(v: float):
+		effect["progress"] = v
+		queue_redraw()
+	, 0.0, 1.0, duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_callback(func():
+		_transient_effects.erase(effect)
+		queue_redraw()
+	)
+
+
+func play_guard_intercept(attacker_pos: Vector2, structure_pos: Vector2, guard_pos: Vector2) -> void:
+	play_spell_beam(attacker_pos, guard_pos, Color(0.36, 0.84, 1.0, 1.0), 4.5, 0.50)
+	play_secondary_burst(guard_pos, Color(0.36, 0.84, 1.0, 1.0), "shield", 0.52)
+	play_spell_beam(structure_pos, guard_pos, Color(0.95, 0.80, 0.35, 0.85), 2.5, 0.42)
 
 func _clear_attack_path() -> void:
 	_attack_alpha = 0.0
@@ -161,6 +237,44 @@ func _draw() -> void:
 			draw_circle(current_end, 6.5, core)
 	if _impact_strength > 0.0:
 		_draw_impact_burst()
+	for effect in _transient_effects:
+		_draw_transient_effect(effect)
+
+
+func _draw_transient_effect(effect: Dictionary) -> void:
+	var effect_type := str(effect.get("type", ""))
+	var color: Color = effect.get("color", Color.WHITE)
+	var progress := float(effect.get("progress", 0.0))
+	var alpha := float(effect.get("alpha", 1.0 - progress))
+	match effect_type:
+		"beam":
+			var start: Vector2 = effect.get("from", Vector2.ZERO)
+			var finish: Vector2 = effect.get("to", Vector2.ZERO)
+			var cur := start.lerp(finish, progress)
+			var width := float(effect.get("width", 5.0))
+			draw_line(start, cur, Color(color.r, color.g, color.b, alpha * 0.28), width * 3.0, true)
+			draw_line(start, cur, Color(color.r, color.g, color.b, alpha * 0.95), width, true)
+			draw_circle(cur, width * 1.4, Color(1.0, 0.98, 0.92, alpha))
+		"lane_wave":
+			var start: Vector2 = effect.get("from", Vector2.ZERO)
+			var finish: Vector2 = effect.get("to", Vector2.ZERO)
+			var cur := start.lerp(finish, progress)
+			var dir := (finish - start).normalized() if start.distance_to(finish) > 1.0 else Vector2.UP
+			var normal := Vector2(-dir.y, dir.x)
+			draw_line(cur - normal * 46.0, cur + normal * 46.0, Color(color.r, color.g, color.b, alpha * 0.36), 22.0, true)
+			draw_line(cur - normal * 42.0, cur + normal * 42.0, Color(color.lightened(0.35), alpha * 0.95), 6.0, true)
+			draw_circle(cur, 18.0 + progress * 14.0, Color(color.r, color.g, color.b, alpha * 0.25))
+		"burst":
+			var center: Vector2 = effect.get("center", Vector2.ZERO)
+			var kind := str(effect.get("kind", "ring"))
+			var radius := lerpf(10.0, 44.0, progress)
+			var burst_color := Color(color.r, color.g, color.b, alpha)
+			if kind == "shield":
+				_draw_defence_shield(center, burst_color, progress)
+			else:
+				draw_circle(center, radius, Color(color.r, color.g, color.b, alpha * 0.22))
+				draw_circle(center, radius, burst_color, false, 3.0, true)
+				draw_circle(center, radius * 0.62, Color(color.lightened(0.35), alpha * 0.72), false, 1.6, true)
 
 func _draw_sword_wind(start: Vector2, finish: Vector2, color: Color, progress: float) -> void:
 	var delta := finish - start

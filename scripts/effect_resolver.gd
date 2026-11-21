@@ -59,11 +59,8 @@ static func resolve_energy_action(
 			if selected_effect == "kanat_manevrasi" and not game_manager.has_effect_triggered(player_id, "flanking_maneuver"):
 				game_manager.mark_effect_triggered(player_id, "flanking_maneuver", {"card_id": card.card_id})
 
-	if energy_spent <= 0 or selected_effect != "ikmal_hatti" or game_manager.has_effect_triggered(player_id, "supply_line_checked"):
+	if energy_spent <= 0 or selected_effect != "ikmal_hatti" or game_manager.has_effect_triggered(player_id, "supply_line"):
 		return {"triggered": false}
-	# Consuming the one-per-turn eligibility check is not itself a trigger. Keep
-	# that ledger bit in snapshots, but count/show only an actual card draw.
-	game_manager.mark_effect_checked(player_id, "supply_line_checked")
 	if game_manager.get_available_energy(player_id) != 0:
 		return {"triggered": false, "checked": true}
 	var battlefield := game_manager.get_parent()
@@ -72,6 +69,7 @@ static func resolve_energy_action(
 	var hand_cards: Array = battlefield.get_hand_cards(player_id)
 	if hand_cards.size() >= GameRules.MAX_HAND_SIZE:
 		return {"triggered": false, "checked": true, "hand_full": true}
+	game_manager.mark_effect_checked(player_id, "supply_line_checked")
 	game_manager.mark_effect_triggered(player_id, "supply_line", {
 		"card_id": card.card_id,
 		"energy_spent": energy_spent,
@@ -377,6 +375,7 @@ static func resolve_targeted_card(
 	if bool(energy_effect.get("triggered", false)):
 		result["energy_effect"] = energy_effect
 	var resolved_effect_id := effect_card.effect_id if not effect_card.effect_id.is_empty() else "attach_skill"
+	effect_card.set_meta("telemetry_energy_spent", resolved_cost)
 	game_manager.card_played.emit(effect_card, target)
 	game_manager.effect_resolved.emit(resolved_effect_id, effect_card, target, result)
 

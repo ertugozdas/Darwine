@@ -75,6 +75,8 @@ CLIENT_PID=$!
 PIDS+=("$CLIENT_PID")
 
 wait_for_marker "$CLIENT_PID" "$CLIENT_LOG" "NETWORK_RECONNECT_CLIENT_DROPPED" 45 || fail_with_logs "İstemci bağlantı kesme adımına ulaşamadı."
+wait_for_marker "$HOST_PID" "$HOST_LOG" "ONLINE_FLOW_TURN_HANDOFF_HOST" 5 || fail_with_logs "Oda sahibi ilk tur devrini doğrulamadı."
+wait_for_marker "$CLIENT_PID" "$CLIENT_LOG" "ONLINE_FLOW_TURN_HANDOFF_CLIENT" 5 || fail_with_logs "İstemci ilk tur devrini güncel snapshot ile görmedi."
 wait_for_marker "$HOST_PID" "$HOST_LOG" "NETWORK_RECONNECT_WINDOW_OPEN player=2" 10 || fail_with_logs "Sunucu yeniden bağlanma penceresini açmadı."
 wait_for_marker "$HOST_PID" "$HOST_LOG" "NETWORK_RECONNECT_SERVER_ACCEPTED player=2" 15 || fail_with_logs "Sunucu oyuncuyu eski yuvasına kabul etmedi."
 wait_for_marker "$CLIENT_PID" "$CLIENT_LOG" "NETWORK_RECONNECT_CLIENT_READY player=2" 15 || fail_with_logs "İstemci geri yüklenen maça dönemedi."
@@ -98,4 +100,4 @@ for log in "$HOST_LOG" "$CLIENT_LOG"; do
 	fi
 done
 
-printf 'ONLINE_FLOW_SMOKE_OK reconnect=restored rematch=started ruleset=%s settings=%s/%s/%s invite=%s port=%s\n' "$RULESET" "$CARD_POOL" "$TURN_DURATION" "$AUTO_ATTACK" "$INVITE_CODE" "$PORT"
+printf 'ONLINE_FLOW_SMOKE_OK turn_handoff=verified reconnect=restored rematch=started ruleset=%s settings=%s/%s/%s invite=%s port=%s\n' "$RULESET" "$CARD_POOL" "$TURN_DURATION" "$AUTO_ATTACK" "$INVITE_CODE" "$PORT"

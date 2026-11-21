@@ -7,6 +7,12 @@ const PAUSE_MENU_SCRIPT := preload("res://scripts/battlefield_pause_menu.gd")
 const SAVE_SLOTS_PANEL_SCRIPT := preload("res://scripts/save_slots_panel.gd")
 const ARENA_OVERLAY_SCRIPT := preload("res://scripts/battlefield_arena_overlay.gd")
 const CARD_STAT_ICON_SCRIPT := preload("res://scripts/card_stat_icon.gd")
+const SCENARIO_BRIEFING_PANEL_SCRIPT := preload("res://scripts/scenario_briefing_panel.gd")
+const SCENARIO_CATALOG := preload("res://scripts/scenario_catalog.gd")
+const SCENARIO_OBJECTIVE_RESOLVER := preload("res://scripts/scenario_objective_resolver.gd")
+const SCENARIO_MATCH_CONFIGURATOR := preload("res://scripts/scenario_match_configurator.gd")
+const MATCH_ANALYSIS := preload("res://scripts/match_analysis.gd")
+const MATCH_ANALYSIS_PANEL_SCRIPT := preload("res://scripts/match_analysis_panel.gd")
 const ARENA_BACKDROP_TEXTURE := preload("res://images/environments/battlefield_factions_arena_blue_player.png")
 const CARD_BACK_TEXTURE := preload("res://images/cards/card_back_fantasy.png")
 const UI := preload("res://scripts/dark_fantasy_ui.gd")
@@ -61,7 +67,8 @@ const EFFECT_OFFER_CARD_SCALE := Vector2(0.84, 0.84)
 const EFFECT_PANEL_CARD_SCALE := Vector2(0.48, 0.48)
 const TOAST_PANEL_SIZE := Vector2(500.0, 68.0)
 const TOAST_DURATION := 2.8
-const CARD_ACTION_PANEL_SIZE := Vector2(520.0, 330.0)
+const CARD_DISSOLVE_SHADER := preload("res://shaders/card_dissolve.gdshader")
+const CARD_ACTION_PANEL_SIZE := Vector2(520.0, 388.0)
 const PHASE_BANNER_SIZE := Vector2(390.0, 52.0)
 const PREFERENCES_PATH := "user://settings.cfg"
 const ONBOARDING_SETTINGS_PATH := "user://darwine_settings.cfg"
@@ -144,6 +151,7 @@ var _phase_selected_cards: Array[BaseCard] = []
 var _discard_required := 0
 var _phase_label: Label = null
 var _preparation_token_button: Button = null
+var _tactical_supply_button: Button = null
 var _auto_attack_panel: Panel = null
 var _auto_attack_checkbox: CheckBox = null
 var _auto_attack_enabled := false
@@ -200,6 +208,20 @@ var _toast_style: StyleBoxFlat = null
 var _toast_tween: Tween = null
 var _p1_hq_health_label: Label = null
 var _p2_hq_health_label: Label = null
+var _match_flow_bar: Panel = null
+var _flow_own_hq_label: Label = null
+var _flow_enemy_hq_label: Label = null
+var _flow_turn_pill: Label = null
+var _flow_phase_labels: Dictionary = {}
+var _flow_dominion_label: Label = null
+var _battle_log_toggle: Button = null
+var _battle_log_panel: PanelContainer = null
+var _battle_log_list: VBoxContainer = null
+var _battle_log_entries: Array[Dictionary] = []
+var _battle_log_expanded := false
+var _recent_feedback_stamps: Dictionary = {}
+var _ai_spotlight_layer: Control = null
+var _end_turn_pulse_tween: Tween = null
 var _game_over_restart_button: Button = null
 var _game_over_main_menu_button: Button = null
 var _game_over_subtitle_label: Label = null
@@ -207,6 +229,7 @@ var _game_over_reward_label: Label = null
 var _game_over_stat_values: Dictionary = {}
 var _game_over_stat_titles: Dictionary = {}
 var _game_over_eyebrow_label: Label = null
+var _game_over_analysis_panel: Variant = null
 var _hud_background: Panel = null
 var _battlefield_static_hud: Control = null
 var _battlefield_world_objects: Control = null
@@ -307,6 +330,11 @@ var _graveyards: Dictionary = {1: [], 2: []}
 var _autosave_pending := false
 var _restoring_active_match := false
 var _active_match_completed := false
+var _scenario_briefing_panel: Variant = null
+var _scenario_objectives_button: Button = null
+var _scenario_refresh_timer: Timer = null
+var _scenario_definition: Dictionary = {}
+var _scenario_evaluation: Dictionary = {}
 
 func _ready() -> void:
 	theme = UI.create_theme()
@@ -331,7 +359,9 @@ func _ready() -> void:
 	_create_card_action_panel()
 	_create_deck_ui_nodes()
 	_create_toast_ui_nodes()
+	_create_match_flow_chrome()
 	_style_game_over_panel()
+	_create_scenario_interface()
 	_connect_slot_signals()
 	_assign_static_network_ids()
 	if not MatchSetup.is_multiplayer_client() and MatchSetup.has_resume_snapshot():
@@ -400,6 +430,8 @@ func _ready() -> void:
 	# Setup button connection
 	end_turn_button.pressed.connect(_on_end_turn_pressed)
 	_preparation_token_button.pressed.connect(_on_preparation_token_pressed)
+	if _tactical_supply_button:
+		_tactical_supply_button.pressed.connect(_on_tactical_supply_pressed)
 	get_viewport().size_changed.connect(_on_viewport_size_changed)
 	
 	# Hide game over panel by default
@@ -436,6 +468,8 @@ func _restore_active_match_on_ready() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
+		if _scenario_briefing_panel and _scenario_briefing_panel.is_open():
+			return
 		if (_tutorial_overlay and _tutorial_overlay.is_open()) or (_rules_reference_panel and _rules_reference_panel.is_open()):
 			return
 		if game_over_panel and game_over_panel.visible:
@@ -462,6 +496,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			if (
 				get_tree().paused
 				or (game_over_panel and game_over_panel.visible)
+				or (_scenario_briefing_panel and _scenario_briefing_panel.is_open())
 				or (_tutorial_overlay and _tutorial_overlay.is_open())
 				or (_rules_reference_panel and _rules_reference_panel.is_open())
 				or (_pause_menu and _pause_menu.visible)
@@ -539,7 +574,11 @@ func _can_start_left_board_pan(screen_position: Vector2) -> bool:
 		return false
 	if get_tree() and get_tree().paused:
 		return false
-	if (_tutorial_overlay and _tutorial_overlay.is_open()) or (_rules_reference_panel and _rules_reference_panel.is_open()):
+	if (
+		(_scenario_briefing_panel and _scenario_briefing_panel.is_open())
+		or (_tutorial_overlay and _tutorial_overlay.is_open())
+		or (_rules_reference_panel and _rules_reference_panel.is_open())
+	):
 		return false
 	if _pause_menu and _pause_menu.is_open():
 		return false
@@ -577,6 +616,79 @@ func _initialize_match_services() -> void:
 	)
 	_match_telemetry.setup(game_manager, _ai_controller, should_write)
 
+
+func _create_scenario_interface() -> void:
+	if not MatchSetup.is_scenario_match():
+		return
+	var catalog_result := SCENARIO_CATALOG.load_catalog()
+	if not bool(catalog_result.get("success", false)):
+		push_warning("Komutan Seferi hedefleri yüklenemedi: %s" % str(catalog_result.get("error", "katalog hatası")))
+		return
+	_scenario_definition = SCENARIO_CATALOG.get_scenario(MatchSetup.get_scenario_id())
+	if _scenario_definition.is_empty():
+		push_warning("Etkin Komutan Seferi senaryosu katalogda bulunamadı: %s" % MatchSetup.get_scenario_id())
+		return
+	_scenario_briefing_panel = SCENARIO_BRIEFING_PANEL_SCRIPT.new()
+	add_child(_scenario_briefing_panel)
+
+	_scenario_objectives_button = Button.new()
+	_scenario_objectives_button.name = "ScenarioObjectivesButton"
+	_scenario_objectives_button.text = tr("CAMPAIGN OBJECTIVES 0/0")
+	_scenario_objectives_button.add_theme_font_size_override("font_size", 12)
+	UI.style_button(_scenario_objectives_button, UI.FROST, false, true, true)
+	_scenario_objectives_button.pressed.connect(_show_scenario_briefing)
+	hud.add_child(_scenario_objectives_button)
+
+	_scenario_refresh_timer = Timer.new()
+	_scenario_refresh_timer.name = "ScenarioObjectiveRefreshTimer"
+	_scenario_refresh_timer.wait_time = 0.5
+	_scenario_refresh_timer.one_shot = false
+	_scenario_refresh_timer.autostart = true
+	_scenario_refresh_timer.timeout.connect(_refresh_scenario_objectives)
+	add_child(_scenario_refresh_timer)
+	_refresh_scenario_objectives()
+
+
+func _show_scenario_briefing() -> void:
+	if (
+		not _scenario_briefing_panel
+		or _scenario_definition.is_empty()
+		or (game_over_panel and game_over_panel.visible)
+	):
+		return
+	var summary := _get_current_match_summary(0)
+	_scenario_briefing_panel.open_panel(
+		_scenario_definition,
+		MatchSetup.get_scenario_context(),
+		summary,
+		MatchSetup.human_player_id
+	)
+
+
+func _maybe_show_scenario_briefing() -> void:
+	if DisplayServer.get_name() == "headless" or not MatchSetup.is_scenario_match():
+		return
+	_show_scenario_briefing()
+
+
+func _refresh_scenario_objectives() -> void:
+	if not _scenario_briefing_panel or _scenario_definition.is_empty():
+		return
+	var winner_id := _network_winner_id if _network_winner_id in GameRules.PLAYER_IDS else 0
+	var summary := _get_current_match_summary(winner_id)
+	_scenario_evaluation = SCENARIO_OBJECTIVE_RESOLVER.evaluate(
+		MatchSetup.get_scenario_context(),
+		summary,
+		MatchSetup.human_player_id
+	)
+	_scenario_briefing_panel.update_match_state(summary, MatchSetup.human_player_id)
+	if _scenario_objectives_button:
+		_scenario_objectives_button.text = tr("CAMPAIGN OBJECTIVES %d/%d") % [
+			int(_scenario_evaluation.get("completed_required_count", 0)),
+			int(_scenario_evaluation.get("required_count", 0)),
+		]
+
+
 func _on_ai_thinking_changed(_player_id: int, _is_thinking: bool) -> void:
 	_refresh_phase_ui()
 
@@ -593,8 +705,8 @@ func _create_responsive_chrome() -> void:
 	hud.add_child(_hud_background)
 	hud.move_child(_hud_background, 0)
 
-	_create_zone_chrome(player1_zone, 1, UI.TEAM_PLAYER)
-	_create_zone_chrome(player2_zone, 2, UI.TEAM_OPPONENT)
+	_create_zone_chrome(player1_zone, 1, _get_team_accent(1))
+	_create_zone_chrome(player2_zone, 2, _get_team_accent(2))
 	_create_battlefield_status_ui()
 	_create_hand_dock()
 	_create_effect_card_panel()
@@ -1034,6 +1146,7 @@ func _create_arena_backdrop() -> void:
 
 	_arena_overlay = ARENA_OVERLAY_SCRIPT.new() as BattlefieldArenaOverlay
 	_arena_overlay.name = "ArenaMapOverlay"
+	_arena_overlay.set_perspective_player(_get_battlefield_perspective_player_id())
 	add_child(_arena_overlay)
 	move_child(_arena_overlay, background.get_index() + 1)
 
@@ -1092,7 +1205,7 @@ func _create_battlefield_status_ui() -> void:
 		}
 		_field_energy_labels[player_id] = energy_badge.get("label")
 		_field_health_labels[player_id] = health_badge.get("label")
-		var team_accent: Color = UI.TEAM_PLAYER if player_id == 1 else UI.TEAM_OPPONENT
+		var team_accent := _get_team_accent(player_id)
 		var name_badge := PanelContainer.new()
 		name_badge.name = "P%dFieldNameBadge" % player_id
 		name_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1355,17 +1468,17 @@ func _create_card_preview_panel() -> void:
 	_preview_details_label = RichTextLabel.new()
 	_preview_details_label.name = "Details"
 	_preview_details_label.bbcode_enabled = true
-	_preview_details_label.scroll_active = false
+	_preview_details_label.scroll_active = true
 	_preview_details_label.fit_content = false
 	_preview_details_label.anchor_left = 0.0
 	_preview_details_label.anchor_top = 0.0
 	_preview_details_label.anchor_right = 1.0
 	_preview_details_label.anchor_bottom = 1.0
-	_preview_details_label.offset_left = 19.0
-	_preview_details_label.offset_top = 39.0
-	_preview_details_label.offset_right = -17.0
-	_preview_details_label.offset_bottom = -13.0
-	_preview_details_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_preview_details_label.offset_left = 15.0
+	_preview_details_label.offset_top = 37.0
+	_preview_details_label.offset_right = -13.0
+	_preview_details_label.offset_bottom = -11.0
+	_preview_details_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	_preview_details_label.add_theme_font_override("normal_font", UI.BODY_MEDIUM_FONT)
 	_preview_details_label.add_theme_font_override("bold_font", UI.BODY_BOLD_FONT)
 	_preview_details_label.add_theme_color_override("default_color", UI.PARCHMENT)
@@ -1389,10 +1502,10 @@ func _style_game_over_panel() -> void:
 	modal.anchor_top = 0.5
 	modal.anchor_right = 0.5
 	modal.anchor_bottom = 0.5
-	modal.offset_left = -380.0
-	modal.offset_top = -285.0
-	modal.offset_right = 380.0
-	modal.offset_bottom = 285.0
+	modal.offset_left = -500.0
+	modal.offset_top = -345.0
+	modal.offset_right = 500.0
+	modal.offset_bottom = 345.0
 	modal.mouse_filter = Control.MOUSE_FILTER_STOP
 	modal.add_theme_stylebox_override("panel", UI.panel_style(UI.BRASS_BRIGHT, 30.0, 1.0))
 	game_over_panel.add_child(modal)
@@ -1440,6 +1553,9 @@ func _style_game_over_panel() -> void:
 	]:
 		stats_grid.add_child(_build_game_over_stat(str(definition[0]), str(definition[1])))
 
+	_game_over_analysis_panel = MATCH_ANALYSIS_PANEL_SCRIPT.new()
+	content.add_child(_game_over_analysis_panel)
+
 	_game_over_reward_label = Label.new()
 	_game_over_reward_label.name = "GameOverReward"
 	_game_over_reward_label.text = "Maç kaydı hazırlanıyor…"
@@ -1455,6 +1571,7 @@ func _style_game_over_panel() -> void:
 	_game_over_subtitle_label.name = "GameOverSubtitle"
 	_game_over_subtitle_label.text = "Aynı düzenle yeniden savaş veya ana menüye dön."
 	_game_over_subtitle_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_game_over_subtitle_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_game_over_subtitle_label.add_theme_font_size_override("font_size", 15)
 	_game_over_subtitle_label.add_theme_color_override("font_color", UI.TEXT_MUTED)
 	content.add_child(_game_over_subtitle_label)
@@ -1566,6 +1683,15 @@ func _create_phase_ui_nodes() -> void:
 	_preparation_token_button.add_theme_font_size_override("font_size", 12)
 	UI.style_button(_preparation_token_button, UI.FROST, false, true)
 	hud.add_child(_preparation_token_button)
+
+	_tactical_supply_button = Button.new()
+	_tactical_supply_button.name = "TacticalSupplyButton"
+	_tactical_supply_button.text = tr("İKMAL ÇEKİŞİ  (%dE → +1 KART)") % GameRules.TACTICAL_SUPPLY_ENERGY_COST
+	_tactical_supply_button.tooltip_text = tr("Hazırlık fazında turda 1 kez %d Enerji harcayarak 1 kart çek.") % GameRules.TACTICAL_SUPPLY_ENERGY_COST
+	_tactical_supply_button.visible = false
+	_tactical_supply_button.add_theme_font_size_override("font_size", 12)
+	UI.style_button(_tactical_supply_button, UI.BRASS, false, true)
+	hud.add_child(_tactical_supply_button)
 
 	_auto_attack_panel = Panel.new()
 	_auto_attack_panel.name = "AutoAttackPanel"
@@ -1782,7 +1908,7 @@ func _leave_match_from_pause() -> void:
 	get_tree().paused = false
 	if _pause_menu:
 		_pause_menu.close_menu()
-	if MatchSetup.is_multiplayer_client():
+	if MatchSetup.is_multiplayer_player():
 		var network_manager := _get_network_manager()
 		if network_manager:
 			network_manager.leave_network(true)
@@ -1800,7 +1926,7 @@ func _create_card_action_panel() -> void:
 	_card_action_panel.offset_right = CARD_ACTION_PANEL_SIZE.x * 0.5
 	_card_action_panel.offset_bottom = CARD_ACTION_PANEL_SIZE.y * 0.5
 	_card_action_panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	_card_action_panel.z_index = 90
+	_card_action_panel.z_index = 270
 	_card_action_panel.add_theme_stylebox_override("panel", UI.panel_style(UI.FROST, 8.0, 0.99))
 	add_child(_card_action_panel)
 
@@ -1884,6 +2010,7 @@ func _update_hq_labels() -> void:
 	if top_hud:
 		top_hud.set_hq_health(1, p1_health, GameRules.HEADQUARTERS_HEALTH)
 		top_hud.set_hq_health(2, p2_health, GameRules.HEADQUARTERS_HEALTH)
+	_refresh_match_flow_chrome()
 
 func _on_hq_health_changed(player_id: int, current_health: int, maximum_health: int) -> void:
 	var hq_card: SettlementCard = p1_hq as SettlementCard
@@ -1993,8 +2120,8 @@ func _refresh_zone_state(active_player_id: int) -> void:
 		var label = _zone_labels.get(player_id) as Label
 		var style = _zone_styles.get(player_id) as StyleBoxFlat
 		var is_active = player_id == active_player_id
-		var team_accent: Color = UI.TEAM_PLAYER if player_id == 1 else UI.TEAM_OPPONENT
-		var front_name := tr("GÜNEY CEPHESİ") if player_id == 1 else tr("KUZEY CEPHESİ")
+		var team_accent := _get_team_accent(player_id)
+		var front_name := tr("GÜNEY CEPHESİ") if _is_player_on_south(player_id) else tr("KUZEY CEPHESİ")
 		if label:
 			var identity := _get_field_player_name(player_id)
 			var identity_lines := [front_name, identity]
@@ -2389,7 +2516,7 @@ func _confirm_effect_offer_selection() -> void:
 	if card_id.is_empty() or not _effect_offer_stages.has(card_id):
 		return
 	var player_id := _get_effect_perspective_player_id()
-	if MatchSetup.is_multiplayer_client():
+	if MatchSetup.is_multiplayer_player():
 		if _request_network_action("effect_choice", {"card_id": card_id}):
 			_effect_selection_status.text = "Seçim sunucu tarafından doğrulanıyor…"
 			if _effect_confirm_button:
@@ -2590,11 +2717,32 @@ func _on_mulligan_completed() -> void:
 func _on_preparation_token_pressed() -> void:
 	if not game_manager:
 		return
-	if MatchSetup.is_multiplayer_client():
+	if MatchSetup.is_multiplayer_player():
 		_request_network_action("preparation_token")
 		return
 	if game_manager.use_preparation_token(game_manager.active_player_id):
 		show_toast("Hazırlık jetonu kullanıldı: +1 geçici Enerji.", Color(0.30, 0.72, 1.0))
+	_refresh_phase_ui()
+
+
+func _on_tactical_supply_pressed() -> void:
+	if not game_manager or is_card_interaction_locked():
+		return
+	var active_id: int = int(game_manager.active_player_id)
+	if MatchSetup.is_multiplayer_player():
+		_request_network_action("tactical_supply")
+		return
+	var active_hand = _get_hand_for_player(active_id)
+	var hand_count: int = _get_hand_card_count(active_hand) if active_hand else 0
+	var result: Dictionary = game_manager.use_tactical_supply(active_id, hand_count)
+	if bool(result.get("success", false)):
+		show_toast(
+			tr("İkmal Çekişi: %d Enerji karşılığında 1 kart çekildi.") % GameRules.TACTICAL_SUPPLY_ENERGY_COST,
+			UI.BRASS_BRIGHT,
+			tr("İKMAL ÇEKİŞİ")
+		)
+	else:
+		show_toast(str(result.get("error", tr("İkmal çekişi yapılamadı."))), UI.BLOOD)
 	_refresh_phase_ui()
 
 
@@ -2826,7 +2974,7 @@ func _on_end_turn_pressed() -> void:
 		GameManager.TurnPhase.MULLIGAN:
 			_confirm_mulligan_selection()
 		GameManager.TurnPhase.PREPARATION, GameManager.TurnPhase.COMBAT:
-			if MatchSetup.is_multiplayer_client():
+			if MatchSetup.is_multiplayer_player():
 				_request_network_action("advance_phase")
 			else:
 				game_manager.advance_phase(game_manager.active_player_id)
@@ -2909,8 +3057,95 @@ func _refresh_phase_ui() -> void:
 			and game_manager.has_preparation_token(game_manager.active_player_id)
 		)
 		_preparation_token_button.disabled = is_card_interaction_locked()
+	if _tactical_supply_button:
+		var active_id: int = int(game_manager.active_player_id)
+		var active_hand = _get_hand_for_player(active_id)
+		var hand_count: int = _get_hand_card_count(active_hand) if active_hand else 0
+		var deck_count: int = get_deck_card_count(active_id)
+		var can_show_supply: bool = (
+			bool(game_manager.is_game_active)
+			and bool(game_manager.is_match_started)
+			and game_manager.current_phase == GameManager.TurnPhase.PREPARATION
+			and not MatchSetup.is_ai_player(active_id)
+			and not bool(game_manager.has_player_turn_flag(active_id, "tactical_supply"))
+			and deck_count > 0
+		)
+		_tactical_supply_button.visible = can_show_supply
+		_tactical_supply_button.disabled = (
+			is_card_interaction_locked()
+			or not bool(game_manager.can_use_tactical_supply(active_id, hand_count))
+		)
+	_layout_sidebar_action_controls()
+	_refresh_card_playability_highlights()
+	_refresh_match_flow_chrome()
+	_refresh_end_turn_pulse()
 	if not _deck_panels.is_empty():
 		_configure_deck_frames(get_viewport_rect().size)
+
+
+func _refresh_card_playability_highlights() -> void:
+	if not game_manager:
+		return
+	var active_id: int = int(game_manager.active_player_id)
+	var is_prep: bool = (
+		bool(game_manager.is_game_active)
+		and bool(game_manager.is_match_started)
+		and game_manager.current_phase == GameManager.TurnPhase.PREPARATION
+		and not MatchSetup.is_ai_player(active_id)
+		and not is_card_interaction_locked()
+	)
+	var is_combat: bool = (
+		bool(game_manager.is_game_active)
+		and bool(game_manager.is_match_started)
+		and game_manager.current_phase == GameManager.TurnPhase.COMBAT
+		and not MatchSetup.is_ai_player(active_id)
+		and not is_card_interaction_locked()
+	)
+	for player_id in GameRules.PLAYER_IDS:
+		var hand_cards := get_hand_cards(player_id)
+		var show_hand_hints: bool = is_prep and player_id == active_id
+		for card in hand_cards:
+			if not card or not is_instance_valid(card) or card.is_queued_for_deletion():
+				continue
+			var playable := false
+			if show_hand_hints:
+				playable = _is_hand_card_currently_playable(card)
+			card.set_hand_playable(playable, show_hand_hints)
+		var board_cards := get_board_cards(player_id)
+		for board_card in board_cards:
+			if not board_card or not is_instance_valid(board_card) or board_card.is_queued_for_deletion():
+				continue
+			var ready_attack := false
+			if is_combat and player_id == active_id:
+				ready_attack = CombatResolver.get_attacker_error(game_manager, board_card).is_empty()
+			board_card.set_board_ready_highlight(ready_attack)
+
+
+func _is_hand_card_currently_playable(card: BaseCard) -> bool:
+	if not game_manager or not card:
+		return false
+	var player_id: int = card.owner_id
+	if card is HeroCard or card is SettlementCard:
+		var action_type := "hero" if card is HeroCard else "settlement"
+		var cost := EffectResolver.get_effect_action_cost(game_manager, card, action_type, card.energy_cost)
+		if not game_manager.has_enough_energy(player_id, cost):
+			return false
+		for slot in get_board_slots(player_id):
+			if slot and slot.can_accept_card(card):
+				return true
+		return false
+	if card is SpecialPowerCard and is_hand_tactic_card(card):
+		var tactic_cost := EffectResolver.get_effect_action_cost(game_manager, card, "special_power", card.energy_cost)
+		if not game_manager.has_enough_energy(player_id, tactic_cost):
+			return false
+		if get_deck_card_count(player_id) <= 0:
+			return false
+		if card.effect_id == "redraw_card":
+			return get_hand_cards(player_id).size() > 1
+		return true
+	if card is UpgradeCard or card is SpecialPowerCard:
+		return not EffectResolver.get_legal_target_slots(game_manager, card).is_empty()
+	return false
 
 func _with_selection_cancel_hint(guidance: String) -> String:
 	return "%s • ESC: %s" % [guidance, tr("VAZGEÇ")]
@@ -2992,7 +3227,7 @@ func request_deployment_target_selection(slot: CardSlot) -> Dictionary:
 		show_toast("Kartı yerleştirmek için mavi bir yuva seç.", Color(0.95, 0.52, 0.24))
 		return {"success": false, "error": "Yerleştirme yuvası geçersiz."}
 
-	if MatchSetup.is_multiplayer_client():
+	if MatchSetup.is_multiplayer_player():
 		var accepted := request_network_card_drop(card, slot)
 		if accepted:
 			_clear_deployment_selection()
@@ -3096,7 +3331,7 @@ func _confirm_mulligan_selection() -> void:
 	for card in _phase_selected_cards:
 		if card and is_instance_valid(card):
 			selected_cards.append(card)
-	if MatchSetup.is_multiplayer_client():
+	if MatchSetup.is_multiplayer_player():
 		var card_ids: Array[String] = []
 		for card in selected_cards:
 			card_ids.append(_get_card_network_id(card))
@@ -3156,13 +3391,20 @@ func _prepare_end_phase() -> void:
 		return
 	if MatchSetup.is_ai_player(game_manager.active_player_id):
 		return
-	if MatchSetup.is_multiplayer_client() and game_manager.active_player_id != MatchSetup.human_player_id:
-		return
-	var hand: Control = _get_hand_for_player(game_manager.active_player_id)
+	var active_player_id: int = int(game_manager.active_player_id)
+	var hand: Control = _get_hand_for_player(active_player_id)
 	_discard_required = max(0, _get_hand_card_count(hand) - GameRules.MAX_HAND_SIZE)
 	if _discard_required == 0:
 		if not MatchSetup.is_multiplayer_client():
-			game_manager.complete_end_phase(game_manager.active_player_id)
+			# Dedicated servers and hosted rooms resolve the authoritative no-discard
+			# transition immediately. Remote clients only render the resulting state.
+			game_manager.complete_end_phase(active_player_id)
+		return
+	if MatchSetup.is_multiplayer_player() and active_player_id != MatchSetup.human_player_id:
+		# The host still owns the authoritative opponent hand, but must never be
+		# offered controls for it. The remote owner will submit the discard action.
+		_discard_required = 0
+		_refresh_phase_ui()
 		return
 
 	show_toast(
@@ -3182,7 +3424,7 @@ func _confirm_discard_selection() -> void:
 	for card in _phase_selected_cards:
 		if card and is_instance_valid(card):
 			selected_cards.append(card)
-	if MatchSetup.is_multiplayer_client():
+	if MatchSetup.is_multiplayer_player():
 		var card_ids: Array[String] = []
 		for card in selected_cards:
 			card_ids.append(_get_card_network_id(card))
@@ -3232,10 +3474,11 @@ func resolve_end_phase_for_player(player_id: int, selected_cards: Array[BaseCard
 
 func is_card_interaction_locked() -> bool:
 	var network_manager := _get_network_manager()
-	var multiplayer_client_locked: bool = (
-		MatchSetup.is_multiplayer_client()
+	var multiplayer_player_locked: bool = (
+		MatchSetup.is_multiplayer_player()
 		and (
 			game_manager == null
+			or MatchSetup.human_player_id not in GameRules.PLAYER_IDS
 			or game_manager.active_player_id != MatchSetup.human_player_id
 			or (network_manager != null and network_manager.is_action_pending())
 		)
@@ -3254,7 +3497,7 @@ func is_card_interaction_locked() -> bool:
 		or (get_tree() != null and get_tree().paused)
 		or (_pause_menu != null and _pause_menu.is_open())
 		or (game_manager != null and MatchSetup.is_ai_player(game_manager.active_player_id))
-		or multiplayer_client_locked
+		or multiplayer_player_locked
 		or reconnect_locked
 		or (_tutorial_overlay != null and _tutorial_overlay.is_open())
 		or (_rules_reference_panel != null and _rules_reference_panel.is_open())
@@ -3263,6 +3506,10 @@ func is_card_interaction_locked() -> bool:
 
 func _on_game_over(winner_id: int) -> void:
 	_active_match_completed = true
+	if _scenario_refresh_timer:
+		_scenario_refresh_timer.stop()
+	if _scenario_briefing_panel and _scenario_briefing_panel.is_open():
+		_scenario_briefing_panel.close_panel()
 	if _can_persist_active_match():
 		_active_match_repository.delete_all()
 	_network_winner_id = winner_id
@@ -3295,14 +3542,30 @@ func _on_game_over(winner_id: int) -> void:
 	if _feedback_audio:
 		_feedback_audio.play_event("victory")
 	var match_summary := _get_current_match_summary(winner_id)
+	if MatchSetup.is_scenario_match():
+		_scenario_evaluation = SCENARIO_OBJECTIVE_RESOLVER.evaluate(
+			MatchSetup.get_scenario_context(),
+			match_summary,
+			MatchSetup.human_player_id
+		)
 	_update_game_over_summary(match_summary, MatchSetup.human_player_id)
 	if _game_over_eyebrow_label:
-		_game_over_eyebrow_label.text = "HAKİMİYET SONA ERDİ" if MatchSetup.is_dominion() else "KUŞATMA SONA ERDİ"
+		_game_over_eyebrow_label.text = (
+			tr("CAMPAIGN ENDED")
+			if MatchSetup.is_scenario_match()
+			else "HAKİMİYET SONA ERDİ" if MatchSetup.is_dominion()
+			else "KUŞATMA SONA ERDİ"
+		)
 	game_over_panel.visible = true
 	if _game_over_restart_button:
 		_game_over_restart_button.visible = MatchSetup.human_player_id in GameRules.PLAYER_IDS
 		_game_over_restart_button.disabled = false
-		_game_over_restart_button.text = "RÖVANŞ İSTE" if MatchSetup.is_multiplayer_match() else "YENİDEN OYNA"
+		_game_over_restart_button.text = (
+			tr("REPLAY SCENARIO")
+			if MatchSetup.is_scenario_match()
+			else "RÖVANŞ İSTE" if MatchSetup.is_multiplayer_match()
+			else "YENİDEN OYNA"
+		)
 	if _game_over_subtitle_label:
 		var base_subtitle := (
 			tr("Both commanders must approve a rematch.")
@@ -3315,6 +3578,9 @@ func _on_game_over(winner_id: int) -> void:
 	if _preparation_token_button:
 		_preparation_token_button.disabled = true
 		_preparation_token_button.visible = false
+	if _tactical_supply_button:
+		_tactical_supply_button.disabled = true
+		_tactical_supply_button.visible = false
 	if _auto_attack_checkbox:
 		_auto_attack_checkbox.disabled = true
 	if _auto_attack_panel:
@@ -3356,6 +3622,8 @@ func _get_current_match_summary(winner_id: int) -> Dictionary:
 	summary["winner_id"] = winner_id
 	summary["ruleset"] = int(MatchSetup.ruleset)
 	summary["ruleset_name"] = MatchSetup.get_ruleset_name()
+	summary["scenario_context"] = MatchSetup.get_scenario_context()
+	summary["scenario_id"] = MatchSetup.get_scenario_id()
 	if game_manager:
 		summary["round_count"] = game_manager.round_count
 		summary["win_reason"] = game_manager.win_reason
@@ -3377,6 +3645,10 @@ func _get_current_match_summary(winner_id: int) -> Dictionary:
 
 func _update_game_over_summary(summary: Dictionary, perspective_player_id: int) -> void:
 	var metrics := _summary_player_metrics(summary, perspective_player_id)
+	var analysis: Dictionary = MATCH_ANALYSIS.analyze(summary, perspective_player_id)
+	summary["match_analysis"] = analysis.duplicate(true)
+	if _game_over_analysis_panel:
+		_game_over_analysis_panel.set_analysis(analysis)
 	_set_game_over_stat("duration", _format_match_duration(float(summary.get("duration_seconds", 0.0))))
 	_set_game_over_stat("rounds", int(summary.get("round_count", 0)))
 	_set_game_over_stat("cards_played", int(metrics.get("cards_played", 0)))
@@ -3416,7 +3688,9 @@ func _finalize_profile_match(winner_id: int) -> void:
 	var summary := _get_current_match_summary(winner_id)
 	_update_game_over_summary(summary, MatchSetup.human_player_id)
 	var mode := "Yerel"
-	if MatchSetup.is_multiplayer_match():
+	if MatchSetup.is_scenario_match():
+		mode = "Komutan Seferi"
+	elif MatchSetup.is_multiplayer_match():
 		mode = "Çevrimiçi"
 	elif MatchSetup.is_ai_match():
 		mode = "Yapay Zekâ"
@@ -3431,24 +3705,71 @@ func _finalize_profile_match(winner_id: int) -> void:
 		mode,
 		deck_name
 	)
+	var scenario_result := _record_scenario_profile_progress(profile_manager, summary)
 	if not _game_over_reward_label:
 		return
-	if not bool(result.get("recorded", false)):
-		_game_over_reward_label.text = tr("The match was already recorded in the profile.")
-		return
-	var reward_parts: Array[String] = [
-		"+%d XP" % int(result.get("xp_gained", 0)),
-		tr("+%d Seals") % int(result.get("seals_gained", 0)),
-	]
-	if int(result.get("level_after", 1)) > int(result.get("level_before", 1)):
-		reward_parts.append(tr("Level %d") % int(result.get("level_after", 1)))
-	var achievements := result.get("new_achievements", []) as Array
-	if not achievements.is_empty():
-		reward_parts.append(tr("Achievement: %s") % tr(str(achievements[0])))
-	var missions := result.get("completed_missions", []) as Array
-	if not missions.is_empty():
-		reward_parts.append(tr("Mission: %s") % tr(str(missions[0])))
+	var reward_parts: Array[String] = []
+	if bool(result.get("recorded", false)):
+		reward_parts.append("+%d XP" % int(result.get("xp_gained", 0)))
+		reward_parts.append(tr("+%d Seals") % int(result.get("seals_gained", 0)))
+		if int(result.get("level_after", 1)) > int(result.get("level_before", 1)):
+			reward_parts.append(tr("Level %d") % int(result.get("level_after", 1)))
+		var achievements := result.get("new_achievements", []) as Array
+		if not achievements.is_empty():
+			reward_parts.append(tr("Achievement: %s") % tr(str(achievements[0])))
+		var missions := result.get("completed_missions", []) as Array
+		if not missions.is_empty():
+			reward_parts.append(tr("Mission: %s") % tr(str(missions[0])))
+	if MatchSetup.is_scenario_match():
+		var evaluation_variant: Variant = scenario_result.get("evaluation", _scenario_evaluation)
+		var evaluation: Dictionary = evaluation_variant as Dictionary if evaluation_variant is Dictionary else {}
+		var completed_count := int(evaluation.get("completed_required_count", 0))
+		var required_count := int(evaluation.get("required_count", 0))
+		if bool(evaluation.get("completed", false)):
+			if bool(scenario_result.get("completed_now", false)):
+				reward_parts.append(tr("SCENARIO COMPLETE"))
+				var campaign_seals := int(scenario_result.get("seals_gained", 0))
+				if campaign_seals > 0:
+					reward_parts.append(tr("Campaign reward: +%d Seals") % campaign_seals)
+			else:
+				reward_parts.append(tr("Scenario objectives complete"))
+		else:
+			reward_parts.append(tr("Scenario objectives: %d/%d") % [completed_count, required_count])
+		if not str(scenario_result.get("error", "")).is_empty():
+			reward_parts.append(tr("Campaign progress could not be saved"))
+	if reward_parts.is_empty():
+		reward_parts.append(tr("The match was already recorded in the profile."))
 	_game_over_reward_label.text = "  •  ".join(reward_parts)
+
+
+func _record_scenario_profile_progress(profile_manager: Node, summary: Dictionary) -> Dictionary:
+	if not MatchSetup.is_scenario_match():
+		return {}
+	if not profile_manager.has_method("record_scenario_result"):
+		return {"recorded": false, "error": "Profil deposu kampanya ilerlemesini desteklemiyor."}
+	var scenario := _scenario_definition
+	if scenario.is_empty():
+		var load_result := SCENARIO_CATALOG.load_catalog()
+		if not bool(load_result.get("success", false)):
+			return {"recorded": false, "error": str(load_result.get("error", "Senaryo kataloğu yüklenemedi."))}
+		scenario = SCENARIO_CATALOG.get_scenario(MatchSetup.get_scenario_id())
+	if scenario.is_empty():
+		return {"recorded": false, "error": "Etkin senaryo katalogda bulunamadı."}
+	var context := MatchSetup.get_scenario_context()
+	_scenario_evaluation = SCENARIO_OBJECTIVE_RESOLVER.evaluate(
+		context,
+		summary,
+		MatchSetup.human_player_id
+	)
+	var match_id := str(summary.get("match_id", MatchSetup.match_id))
+	var result: Dictionary = profile_manager.record_scenario_result(
+		str(context.get("campaign_id", "")),
+		scenario,
+		_scenario_evaluation,
+		match_id
+	)
+	result["evaluation"] = _scenario_evaluation.duplicate(true)
+	return result
 
 
 func _summary_player_metrics(summary: Dictionary, player_id: int) -> Dictionary:
@@ -3488,6 +3809,15 @@ func _on_restart_match_pressed() -> void:
 			if _game_over_subtitle_label:
 				_game_over_subtitle_label.text = tr("Rematch request sent; waiting for the opponent's approval.")
 		return
+	if MatchSetup.is_scenario_match():
+		var replay_result := SCENARIO_MATCH_CONFIGURATOR.configure(
+			MatchSetup.get_scenario_id(),
+			get_node_or_null("/root/DeckManager")
+		)
+		if not bool(replay_result.get("success", false)):
+			if _game_over_reward_label:
+				_game_over_reward_label.text = tr("Scenario could not be restarted: %s") % str(replay_result.get("error", ""))
+			return
 	get_tree().reload_current_scene()
 
 func _on_game_over_main_menu_pressed() -> void:
@@ -3513,6 +3843,9 @@ func _connect_network_session_signals() -> void:
 	var connection_callback := Callable(self, "_on_network_opponent_connection_changed")
 	if not network_manager.is_connected("opponent_connection_changed", connection_callback):
 		network_manager.connect("opponent_connection_changed", connection_callback)
+	var pending_callback := Callable(self, "_on_network_action_pending_changed")
+	if not network_manager.is_connected("action_pending_changed", pending_callback):
+		network_manager.connect("action_pending_changed", pending_callback)
 
 
 func _on_network_rematch_status_changed(votes: int, required_votes: int, message: String) -> void:
@@ -3528,6 +3861,10 @@ func _on_network_opponent_connection_changed(_player_id: int, connected: bool, s
 		Color(0.38, 0.90, 0.62) if connected else Color(0.95, 0.58, 0.24),
 		"BAĞLANTI"
 	)
+	_refresh_phase_ui()
+
+
+func _on_network_action_pending_changed(_is_pending: bool) -> void:
 	_refresh_phase_ui()
 
 func _on_viewport_size_changed() -> void:
@@ -3689,94 +4026,61 @@ func _configure_board_world_geometry() -> void:
 	var side_extent := BOARD_SLOT_SIZE.x + BOARD_HQ_GAP
 	var hq_extent := BOARD_SLOT_SIZE.y + BOARD_HQ_GAP
 	var grid_left := BOARD_WORLD_PADDING.x + side_extent
-	var p2_top := BOARD_WORLD_PADDING.y
+	var north_top := BOARD_WORLD_PADDING.y
 	var zone_height := BOARD_GRID_BASE_SIZE.y + hq_extent
-	var p1_top := p2_top + zone_height + BOARD_CENTER_GAP
+	var south_top := north_top + zone_height + BOARD_CENTER_GAP
 	var zone_width := BOARD_GRID_BASE_SIZE.x
+	var south_player_id := _get_battlefield_perspective_player_id()
+	var north_rect := Rect2(Vector2(grid_left, north_top), Vector2(zone_width, zone_height))
+	var south_rect := Rect2(Vector2(grid_left, south_top), Vector2(zone_width, zone_height))
 
 	_board_world_size = Vector2(
 		BOARD_GRID_BASE_SIZE.x + (side_extent * 2.0) + (BOARD_WORLD_PADDING.x * 2.0),
 		(zone_height * 2.0) + BOARD_CENTER_GAP + (BOARD_WORLD_PADDING.y * 2.0)
 	)
-	_p2_zone_world_rect = Rect2(
-		Vector2(grid_left, p2_top),
-		Vector2(zone_width, zone_height)
-	)
-	_p1_zone_world_rect = Rect2(
-		Vector2(grid_left, p1_top),
-		Vector2(zone_width, zone_height)
-	)
+	_p1_zone_world_rect = south_rect if south_player_id == 1 else north_rect
+	_p2_zone_world_rect = south_rect if south_player_id == 2 else north_rect
 	_lane_board_world_rect = Rect2(
-		Vector2(grid_left, p2_top + hq_extent),
-		Vector2(BOARD_GRID_BASE_SIZE.x, (p1_top + BOARD_GRID_BASE_SIZE.y) - (p2_top + hq_extent))
+		Vector2(grid_left, north_top + hq_extent),
+		Vector2(BOARD_GRID_BASE_SIZE.x, (south_top + BOARD_GRID_BASE_SIZE.y) - (north_top + hq_extent))
 	)
 	_platform_world_rect = Rect2(
-		Vector2(BOARD_WORLD_PADDING.x, p2_top),
+		Vector2(BOARD_WORLD_PADDING.x, north_top),
 		Vector2(
 			_board_world_size.x - (BOARD_WORLD_PADDING.x * 2.0),
-			(p1_top + zone_height) - p2_top
+			(south_top + zone_height) - north_top
 		)
 	)
-	_board_divider_world_y = p2_top + zone_height + (BOARD_CENTER_GAP * 0.5)
+	_board_divider_world_y = north_top + zone_height + (BOARD_CENTER_GAP * 0.5)
 
 	_configure_board_zone(player2_zone, _p2_zone_world_rect.size)
 	_configure_board_zone(player1_zone, _p1_zone_world_rect.size)
 
-	_set_control_rect(
-		p2_grid,
-		Rect2(Vector2(0.0, hq_extent), BOARD_GRID_BASE_SIZE)
-	)
-	_set_control_rect(
-		p1_grid,
-		Rect2(Vector2.ZERO, BOARD_GRID_BASE_SIZE)
-	)
-	_layout_board_slots(
-		p2_grid,
-		2,
-		BOARD_SLOT_SIZE,
-		BOARD_SLOT_GAP,
-		BOARD_GRID_BASE_SIZE,
-		1.0
-	)
-	_layout_board_slots(
-		p1_grid,
-		1,
-		BOARD_SLOT_SIZE,
-		BOARD_SLOT_GAP,
-		BOARD_GRID_BASE_SIZE,
-		1.0
-	)
-
 	var hq_left := (BOARD_GRID_BASE_SIZE.x - BOARD_SLOT_SIZE.x) * 0.5
-	_place_board_slot(
-		p2_hq_slot,
-		Vector2(hq_left, 0.0),
-		BOARD_SLOT_SIZE,
-		1.0
-	)
-	_place_board_slot(
-		p1_hq_slot,
-		Vector2(hq_left, BOARD_GRID_BASE_SIZE.y + BOARD_HQ_GAP),
-		BOARD_SLOT_SIZE,
-		1.0
-	)
-	_layout_hq_resource_badges()
-
-	var p2_label := _zone_labels.get(2) as Label
-	if p2_label:
-		p2_label.position = Vector2(-112.0, (BOARD_SLOT_SIZE.y - 64.0) * 0.5)
-		p2_label.size = Vector2(164.0, 64.0)
-		p2_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		p2_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	var p1_label := _zone_labels.get(1) as Label
-	if p1_label:
-		p1_label.position = Vector2(
-			-112.0,
-			BOARD_GRID_BASE_SIZE.y + BOARD_HQ_GAP + ((BOARD_SLOT_SIZE.y - 64.0) * 0.5)
+	for player_id in GameRules.PLAYER_IDS:
+		var is_south := player_id == south_player_id
+		var grid: Control = p1_grid if player_id == 1 else p2_grid
+		var hq_slot: CardSlot = p1_hq_slot if player_id == 1 else p2_hq_slot
+		var grid_top := 0.0 if is_south else hq_extent
+		var hq_top := BOARD_GRID_BASE_SIZE.y + BOARD_HQ_GAP if is_south else 0.0
+		_set_control_rect(grid, Rect2(Vector2(0.0, grid_top), BOARD_GRID_BASE_SIZE))
+		_layout_board_slots(
+			grid,
+			is_south,
+			BOARD_SLOT_SIZE,
+			BOARD_SLOT_GAP,
+			BOARD_GRID_BASE_SIZE,
+			1.0
 		)
-		p1_label.size = Vector2(164.0, 64.0)
-		p1_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		p1_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_place_board_slot(hq_slot, Vector2(hq_left, hq_top), BOARD_SLOT_SIZE, 1.0)
+
+		var label := _zone_labels.get(player_id) as Label
+		if label:
+			label.position = Vector2(-112.0, hq_top + ((BOARD_SLOT_SIZE.y - 64.0) * 0.5))
+			label.size = Vector2(164.0, 64.0)
+			label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_layout_hq_resource_badges()
 
 
 func _layout_hq_resource_badges() -> void:
@@ -3843,9 +4147,9 @@ func _get_default_board_camera_center() -> Vector2:
 
 
 func _get_hq_world_rect(player_id: int) -> Rect2:
-	var zone_rect := _p1_zone_world_rect if player_id == 1 else _p2_zone_world_rect
+	var zone_rect := _get_player_zone_world_rect(player_id)
 	var hq_left := (BOARD_GRID_BASE_SIZE.x - BOARD_SLOT_SIZE.x) * 0.5
-	var hq_top := BOARD_GRID_BASE_SIZE.y + BOARD_HQ_GAP if player_id == 1 else 0.0
+	var hq_top := BOARD_GRID_BASE_SIZE.y + BOARD_HQ_GAP if _is_player_on_south(player_id) else 0.0
 	return Rect2(zone_rect.position + Vector2(hq_left, hq_top), BOARD_SLOT_SIZE)
 
 
@@ -3853,7 +4157,7 @@ func _get_field_name_world_rect(player_id: int) -> Rect2:
 	var hq_rect := _get_hq_world_rect(player_id)
 	var badge_top := (
 		hq_rect.end.y + FIELD_NAME_HQ_GAP
-		if player_id == 1
+		if _is_player_on_south(player_id)
 		else hq_rect.position.y - FIELD_NAME_HQ_GAP - FIELD_NAME_BADGE_SIZE.y
 	)
 	return Rect2(
@@ -3874,8 +4178,8 @@ func _get_team_standard_world_center(player_id: int) -> Vector2:
 		),
 		DECK_PANEL_SIZE
 	)
-	var zone_rect := _p1_zone_world_rect if player_id == 1 else _p2_zone_world_rect
-	var grid_top := zone_rect.position.y + (0.0 if player_id == 1 else BOARD_SLOT_SIZE.y + BOARD_HQ_GAP)
+	var zone_rect := _get_player_zone_world_rect(player_id)
+	var grid_top := zone_rect.position.y + (0.0 if _is_player_on_south(player_id) else BOARD_SLOT_SIZE.y + BOARD_HQ_GAP)
 	var grid_rect := Rect2(Vector2(zone_rect.position.x, grid_top), BOARD_GRID_BASE_SIZE)
 	return Vector2(
 		deck_rect.get_center().x,
@@ -4072,9 +4376,9 @@ func _layout_effect_panel_contents() -> void:
 	var enemy_back := _effect_panel_enemy_mount.get_node_or_null("NeutralEffectBack") as TextureRect
 	if enemy_back:
 		enemy_back.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var own_name_top := own_rect.position.y - 18.0 if perspective_player_id == 1 else own_rect.end.y + 2.0
-	var own_state_top := own_rect.end.y + 2.0 if perspective_player_id == 1 else own_rect.position.y - 18.0
-	var enemy_label_top := enemy_rect.end.y + 2.0 if opponent_player_id == 2 else enemy_rect.position.y - 18.0
+	var own_name_top := own_rect.position.y - 18.0 if _is_player_on_south(perspective_player_id) else own_rect.end.y + 2.0
+	var own_state_top := own_rect.end.y + 2.0 if _is_player_on_south(perspective_player_id) else own_rect.position.y - 18.0
+	var enemy_label_top := enemy_rect.end.y + 2.0 if not _is_player_on_south(opponent_player_id) else enemy_rect.position.y - 18.0
 	_set_control_rect(
 		_effect_panel_own_label,
 		Rect2(Vector2(own_rect.position.x, own_name_top), Vector2(own_rect.size.x, 16.0))
@@ -4171,10 +4475,12 @@ func _cancel_board_pan_tween() -> void:
 func _focus_board_region(region: int) -> void:
 	_cancel_board_pan_tween()
 	var target_y := _board_divider_world_y
+	var south_player_id := _get_battlefield_perspective_player_id()
+	var north_player_id: int = int(game_manager.get_opponent_id(south_player_id)) if game_manager else (2 if south_player_id == 1 else 1)
 	if region < 0:
-		target_y = _p2_zone_world_rect.get_center().y
+		target_y = _get_player_zone_world_rect(north_player_id).get_center().y
 	elif region > 0:
-		target_y = _p1_zone_world_rect.get_center().y
+		target_y = _get_player_zone_world_rect(south_player_id).get_center().y
 	_board_camera_center = Vector2(_board_world_size.x * 0.5, target_y)
 	_board_zoom = clampf(
 		maxf(_get_default_board_zoom(), 0.76),
@@ -4208,15 +4514,20 @@ func _update_board_zoom_label() -> void:
 func _layout_board_navigation(hand_dock_top: float, outer_pad: float, zone_width: float) -> void:
 	if not _board_navigation_panel:
 		return
-	var panel_width := minf(116.0, maxf(102.0, zone_width * 0.14))
+	var panel_width := minf(124.0, maxf(112.0, zone_width * 0.14))
 	var panel_height := 274.0 if _board_navigation_expanded else 42.0
+	var nav_left := outer_pad + 12.0
+	if _board_navigation_expanded and _field_own_health_badge and _field_own_health_badge.visible:
+		var badge_rect := _field_own_health_badge.get_global_rect()
+		if hand_dock_top - panel_height - 12.0 < badge_rect.end.y + 8.0:
+			nav_left = maxf(nav_left, badge_rect.end.x + 12.0)
 	_board_navigation_panel.anchor_left = 0.0
 	_board_navigation_panel.anchor_top = 0.0
 	_board_navigation_panel.anchor_right = 0.0
 	_board_navigation_panel.anchor_bottom = 0.0
-	_board_navigation_panel.offset_left = outer_pad + 12.0
+	_board_navigation_panel.offset_left = nav_left
 	_board_navigation_panel.offset_top = hand_dock_top - panel_height - 12.0
-	_board_navigation_panel.offset_right = outer_pad + 12.0 + panel_width
+	_board_navigation_panel.offset_right = nav_left + panel_width
 	_board_navigation_panel.offset_bottom = hand_dock_top - 12.0
 
 func _hide_legacy_turn_gold_labels() -> void:
@@ -4297,7 +4608,7 @@ func _configure_hand_frame(hand: Control, left: float, top: float, content_size:
 
 func _layout_board_slots(
 	grid: Control,
-	player_id: int,
+	is_south: bool,
 	slot_size: Vector2,
 	slot_gap: Vector2,
 	grid_size: Vector2,
@@ -4307,7 +4618,7 @@ func _layout_board_slots(
 		return
 
 	grid.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var rows := _get_board_slot_rows(player_id)
+	var rows := _get_board_slot_rows(is_south)
 	var active_slot_names := {}
 	for row_spec in rows:
 		var slot_names: Array = row_spec.get("names", [])
@@ -4334,8 +4645,8 @@ func _layout_board_slots(
 		slot.visible = is_active
 		slot.mouse_filter = Control.MOUSE_FILTER_STOP if is_active else Control.MOUSE_FILTER_IGNORE
 
-func _get_board_slot_rows(player_id: int) -> Array:
-	if player_id == 2:
+func _get_board_slot_rows(is_south: bool) -> Array:
+	if not is_south:
 		return [
 			{"names": ["Slot_S1", "Slot_S2", "Slot_S3"], "row": 0},
 			{"names": ["Slot_B1", "Slot_B2", "Slot_B3"], "row": 1},
@@ -4437,6 +4748,7 @@ func play_hand_card_to_slot(card: BaseCard, slot: CardSlot) -> Dictionary:
 	# Refreshing here switches them to PASS so both the card and its parent slot
 	# can drive hover/click inspection just like player-placed field cards.
 	card._refresh_mouse_filter()
+	card.set_meta("telemetry_energy_spent", resolved_cost)
 	game_manager.card_played.emit(card, null)
 	var board_effect := EffectResolver.resolve_after_board_card_played(game_manager, card)
 	var energy_effect := EffectResolver.resolve_energy_action(game_manager, card, action_type, resolved_cost)
@@ -4455,7 +4767,7 @@ func play_hand_card_to_slot(card: BaseCard, slot: CardSlot) -> Dictionary:
 
 
 func request_network_card_drop(card: BaseCard, slot: CardSlot) -> bool:
-	if not MatchSetup.is_multiplayer_client() or not card or not slot:
+	if not MatchSetup.is_multiplayer_player() or not card or not slot:
 		return false
 	var action := "targeted_card" if card is UpgradeCard else "play_card"
 	return _request_network_action(action, {
@@ -4517,6 +4829,7 @@ func _on_dominion_score_changed(player_id: int, current_score: int, target_score
 	_field_dominion_target = maxi(1, target_score)
 	if top_hud:
 		top_hud.set_dominion_score(player_id, current_score, target_score)
+	_refresh_match_flow_chrome()
 	if game_manager:
 		_refresh_zone_state(game_manager.active_player_id)
 
@@ -4755,7 +5068,7 @@ func request_movement_target_selection(slot: CardSlot) -> void:
 		_clear_movement_selection()
 		return
 	var mover := _selected_mover
-	if MatchSetup.is_multiplayer_client():
+	if MatchSetup.is_multiplayer_player():
 		_request_network_action("move", {
 			"card_id": _get_card_network_id(mover),
 			"slot_id": _get_slot_network_id(slot),
@@ -4810,7 +5123,7 @@ func _perform_card_upgrade(branch_id: String) -> void:
 		_clear_card_action_selection()
 		return
 	var card := _selected_action_card
-	if MatchSetup.is_multiplayer_client():
+	if MatchSetup.is_multiplayer_player():
 		_request_network_action("upgrade", {
 			"card_id": _get_card_network_id(card),
 			"branch_id": branch_id,
@@ -4893,7 +5206,7 @@ func _request_hand_tactic_selection(card: SpecialPowerCard) -> void:
 	_clear_hand_tactic_selection()
 
 	if card.effect_id == "draw_cards":
-		if MatchSetup.is_multiplayer_client():
+		if MatchSetup.is_multiplayer_player():
 			_request_network_action("hand_tactic", {"card_id": _get_card_network_id(card)})
 			return
 		var draw_result: Dictionary = await resolve_hand_tactic(card)
@@ -4925,7 +5238,7 @@ func request_hand_tactic_target_selection(target: BaseCard) -> void:
 		show_toast("Yalnızca vurgulanan el kartlarından birini seçebilirsin.", Color(0.95, 0.38, 0.24))
 		return
 	var tactic := _selected_hand_tactic_card
-	if MatchSetup.is_multiplayer_client():
+	if MatchSetup.is_multiplayer_player():
 		_request_network_action("hand_tactic", {
 			"card_id": _get_card_network_id(tactic),
 			"target_card_id": _get_card_network_id(target),
@@ -4981,6 +5294,7 @@ func resolve_hand_tactic(tactic: SpecialPowerCard, hand_target: BaseCard = null)
 		"effect": effect_id,
 		"cards_requested": expected_draws,
 	}
+	tactic.set_meta("telemetry_energy_spent", resolved_cost)
 	game_manager.card_played.emit(tactic, hand_target)
 	game_manager.effect_resolved.emit(effect_id, tactic, hand_target, signal_result)
 	EffectResolver.resolve_special_power_echo(game_manager, tactic)
@@ -5106,7 +5420,7 @@ func request_effect_target_selection(slot: CardSlot) -> void:
 		_clear_effect_selection()
 		return
 	var played_card := _selected_effect_card
-	if MatchSetup.is_multiplayer_client():
+	if MatchSetup.is_multiplayer_player():
 		_request_network_action("targeted_card", {
 			"card_id": _get_card_network_id(played_card),
 			"slot_id": _get_slot_network_id(slot),
@@ -5179,7 +5493,7 @@ func request_combat_slot_selection(slot: CardSlot) -> void:
 		return
 
 	var attacker := _selected_attacker
-	if MatchSetup.is_multiplayer_client():
+	if MatchSetup.is_multiplayer_player():
 		_request_network_action("attack", {
 			"card_id": _get_card_network_id(attacker),
 			"slot_id": _get_slot_network_id(slot),
@@ -5227,7 +5541,7 @@ func resolve_attack_with_feedback(attacker: BaseCard, target_slot: CardSlot) -> 
 		attacker.current_slot.set_combat_highlight(CardSlot.CombatHighlight.ATTACKER, "SALDIRAN")
 	target_slot.set_combat_highlight(CardSlot.CombatHighlight.TARGET, "VURULACAK")
 	if _feedback_layer:
-		var trace_color := UI.TEAM_PLAYER if attacker.owner_id == 1 else UI.TEAM_OPPONENT
+		var trace_color := _get_team_accent(attacker.owner_id)
 		_play_attack_feedback(attacker, target, trace_color)
 	attacker.play_attack_lunge(_get_card_feedback_center(target))
 	target.play_feedback_animation("brace")
@@ -5273,7 +5587,12 @@ func _refresh_combat_highlights() -> void:
 	if _selected_attacker and is_instance_valid(_selected_attacker) and _selected_attacker.current_slot:
 		_selected_attacker.current_slot.set_combat_highlight(CardSlot.CombatHighlight.ATTACKER, "SALDIRAN")
 	if _legal_combat_target and is_instance_valid(_legal_combat_target):
-		_legal_combat_target.set_combat_highlight(CardSlot.CombatHighlight.TARGET, "VUR")
+		var target_hint := "VUR"
+		if _selected_attacker and is_instance_valid(_selected_attacker):
+			var preview := CombatResolver.preview_attack(self, game_manager, _selected_attacker, _legal_combat_target)
+			if not preview.is_empty():
+				target_hint = str(preview.get("summary_label", "VUR"))
+		_legal_combat_target.set_combat_highlight(CardSlot.CombatHighlight.TARGET, target_hint)
 
 func _clear_combat_selection() -> void:
 	if _selected_attacker and is_instance_valid(_selected_attacker) and _selected_attacker != _combat_sequence_attacker:
@@ -5475,7 +5794,7 @@ func _on_attack_declared(attacker: BaseCard, target: BaseCard) -> void:
 	if _feedback_layer and is_pretelegraphed:
 		_feedback_layer.trigger_attack_impact()
 	elif _feedback_layer:
-		var trace_color := UI.TEAM_PLAYER if attacker.owner_id == 1 else UI.TEAM_OPPONENT
+		var trace_color := _get_team_accent(attacker.owner_id)
 		_play_attack_feedback(attacker, target, trace_color)
 	if not is_pretelegraphed:
 		attacker.play_feedback_animation("attack")
@@ -5485,6 +5804,15 @@ func _on_attack_declared(attacker: BaseCard, target: BaseCard) -> void:
 func _on_card_played(card: BaseCard, _target: BaseCard) -> void:
 	if card is SpecialPowerCard:
 		_record_graveyard_card(card, "played")
+	if card:
+		var actor_tag := "O%d" % card.owner_id
+		var type_tag := UI.get_card_type_label(card._get_card_type_key())
+		_append_battle_log(
+			"%s: %s (%s)" % [actor_tag, tr(card.card_name), tr(type_tag)],
+			UI.get_card_type_color(card._get_card_type_key()),
+			card._get_card_type_key(),
+			card.card_id
+		)
 	if card and not MatchSetup.fast_mode and (card is HeroCard or card is SettlementCard):
 		card.play_feedback_animation("deploy")
 	if _feedback_audio:
@@ -5546,6 +5874,51 @@ func _on_effect_resolved(
 				if blocked > 0 and feedback_kind != BattlefieldFeedbackLayer.IMPACT_BLOCKED:
 					damage_text += "  •  %d ENGEL" % blocked
 				_spawn_floating_feedback(damage_text, target, feedback_color, emphasized)
+				if bool(result.get("guard_redirected", false)):
+					_spawn_floating_feedback(tr("MUHAFIZ KARŞILADI"), target, Color(0.42, 0.88, 1.0))
+					if _feedback_layer and source and is_instance_valid(source):
+						var original_target := result.get("original_target") as BaseCard
+						var struct_pt := _to_feedback_point(_get_card_feedback_center(original_target if original_target else target))
+						_feedback_layer.play_guard_intercept(
+							_to_feedback_point(_get_card_feedback_center(source)),
+							struct_pt,
+							_to_feedback_point(_get_card_feedback_center(target))
+						)
+				var mod_tags: Array[String] = []
+				var siege_b := int(result.get("siege_bonus", 0))
+				if siege_b > 0:
+					mod_tags.append(tr("KUŞATMA +%d") % siege_b)
+				var banner_b := int(result.get("war_banner_bonus", 0))
+				if banner_b > 0:
+					mod_tags.append(tr("SANCAK +%d") % banner_b)
+				var lb_b := int(result.get("last_breath_bonus", 0))
+				if lb_b > 0:
+					mod_tags.append(tr("SON NEFES +%d") % lb_b)
+				var bulwark_r := int(result.get("bulwark_reduction", 0))
+				if bulwark_r > 0:
+					mod_tags.append(tr("SİPER -%d") % bulwark_r)
+				var eclipse_r := int(result.get("eclipse_reduction", 0))
+				if eclipse_r > 0:
+					mod_tags.append(tr("TUTULMA -%d") % eclipse_r)
+				var pierce_d := int(result.get("piercing_health_damage", 0))
+				if pierce_d > 0:
+					mod_tags.append(tr("DELİCİ %d") % pierce_d)
+				if not mod_tags.is_empty():
+					_spawn_floating_feedback(" • ".join(mod_tags), target, UI.BRASS_BRIGHT)
+				var src_name := tr(source.card_name) if source and is_instance_valid(source) else tr("Etki")
+				var tgt_name := tr(target.card_name) if is_instance_valid(target) else tr("Hedef")
+				_append_battle_log(
+					"%s → %s (-%d%s)" % [src_name, tgt_name, actual_damage, (" " + tr("YOK")) if bool(result.get("destroyed", false)) else ""],
+					UI.BLOOD.lightened(0.28),
+					source._get_card_type_key() if source and is_instance_valid(source) else "",
+					source.card_id if source and is_instance_valid(source) else ""
+				)
+				if _feedback_layer and source and is_instance_valid(source) and source is SpecialPowerCard:
+					_feedback_layer.play_spell_beam(
+						_to_feedback_point(_get_card_feedback_center(source)),
+						_to_feedback_point(_get_card_feedback_center(target)),
+						Color(1.0, 0.36, 0.24, 1.0)
+					)
 			if _feedback_audio and not bool(result.get("destroyed", false)):
 				match feedback_kind:
 					BattlefieldFeedbackLayer.IMPACT_CRITICAL:
@@ -5562,6 +5935,8 @@ func _on_effect_resolved(
 			if healed > 0 and target and is_instance_valid(target):
 				target.play_feedback_animation("heal", healed)
 				_spawn_floating_feedback("+%d CAN" % healed, target, Color(0.38, 1.0, 0.58))
+				if _feedback_layer:
+					_feedback_layer.play_secondary_burst(_to_feedback_point(_get_card_feedback_center(target)), Color(0.36, 0.94, 0.54))
 				if _feedback_audio:
 					_feedback_audio.play_event("heal")
 		"stunned", "poison", "protected":
@@ -5571,13 +5946,37 @@ func _on_effect_resolved(
 				var status_name := str(status_entry.get("name", normalized.to_upper())).to_upper()
 				var status_amount := target.get_status_amount(normalized)
 				target.play_feedback_animation("heal" if normalized == "protected" else "damage", status_amount)
+				var status_color := Color(0.42, 0.86, 1.0)
+				if normalized == "poison":
+					status_color = Color(0.50, 0.92, 0.36)
+				elif normalized == "stunned":
+					status_color = Color(0.56, 0.82, 1.0)
 				_spawn_floating_feedback(
 					"%s %d" % [status_name, status_amount],
 					target,
-					Color(0.68, 0.52, 1.0) if normalized != "protected" else Color(0.42, 0.86, 1.0)
+					status_color
 				)
+				if _feedback_layer:
+					_feedback_layer.play_secondary_burst(
+						_to_feedback_point(_get_card_feedback_center(target)),
+						status_color,
+						"shield" if normalized == "protected" else "ring"
+					)
 				if _feedback_audio:
 					_feedback_audio.play_event("heal" if normalized == "protected" else "damage")
+		"cleave", "retaliate", "stormstep", "spore_drift", "afterburn", "petrify", "armor_siphon", "devourer", "soulbond", "starlight_ward", "steadfast", "hive_mind":
+			if target and is_instance_valid(target):
+				var trait_label := CardKeywordGlossary.get_keyword_name(normalized).to_upper()
+				if trait_label.is_empty():
+					trait_label = normalized.to_upper()
+				_spawn_floating_feedback(trait_label, target, UI.BRASS_BRIGHT)
+				if _feedback_layer:
+					_feedback_layer.play_secondary_burst(_to_feedback_point(_get_card_feedback_center(target)), UI.BRASS_BRIGHT)
+		"banish_target":
+			if target and is_instance_valid(target):
+				_spawn_floating_feedback("SÜRGÜN", target, Color(0.76, 0.44, 1.0), true)
+				if _feedback_layer:
+					_feedback_layer.play_secondary_burst(_to_feedback_point(_get_card_feedback_center(target)), Color(0.76, 0.44, 1.0))
 		"attach_skill":
 			if target and is_instance_valid(target):
 				target.play_feedback_animation("upgrade")
@@ -5786,31 +6185,41 @@ func _spawn_floating_feedback(
 	anchor.position = _to_feedback_point(_get_card_feedback_center(card))
 	_feedback_clip.add_child(anchor)
 
+	# Vertical stagger prevents simultaneous popups (e.g. damage + modifier + XP)
+	# on the same card from overlapping each other.
+	var card_key := card.get_instance_id() if card and is_instance_valid(card) else 0
+	var now_ms := Time.get_ticks_msec()
+	var stack_index := 0
+	if _recent_feedback_stamps.has(card_key):
+		var entry := _recent_feedback_stamps[card_key] as Dictionary
+		if now_ms - int(entry.get("time", 0)) < 680:
+			stack_index = (int(entry.get("count", 0)) + 1) % 4
+	_recent_feedback_stamps[card_key] = {"time": now_ms, "count": stack_index}
+
 	var label := Label.new()
 	label.name = "FloatingFeedback"
 	label.text = message
-	label.size = Vector2(210.0, 34.0) if emphasized else Vector2(180.0, 30.0)
-	label.position = -label.size * 0.5
+	label.size = Vector2(230.0, 34.0) if emphasized else Vector2(200.0, 28.0)
+	label.position = Vector2(-label.size.x * 0.5, -label.size.y * 0.5 - float(stack_index) * 24.0)
 	label.pivot_offset = label.size * 0.5
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.add_theme_font_override("font", UI.BODY_BOLD_FONT)
-	label.add_theme_font_size_override("font_size", 18 if emphasized else 15)
+	label.add_theme_font_size_override("font_size", 18 if emphasized else 14)
 	label.add_theme_color_override("font_color", color)
 	label.add_theme_color_override("font_outline_color", Color.BLACK)
 	label.add_theme_constant_override("outline_size", 4)
 	anchor.add_child(label)
 	_register_transient_feedback_anchor(anchor, card, false)
 	floating_feedback_count += 1
-	if emphasized:
-		label.scale = Vector2(1.24, 1.24)
-	var target_y := label.position.y - 36.0
+	label.scale = Vector2(0.70, 0.70)
+	var target_y := label.position.y - 38.0
 	var tween := create_tween().bind_node(anchor).set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tween.tween_property(label, "position:y", target_y, 0.62)
-	if emphasized:
-		tween.tween_property(label, "scale", Vector2.ONE, 0.24)
-	tween.tween_property(label, "modulate:a", 0.0, 0.62).set_delay(0.18)
+	tween.tween_property(label, "position:y", target_y, 0.78)
+	tween.tween_property(label, "scale", Vector2(1.16, 1.16) if emphasized else Vector2(1.04, 1.04), 0.16).set_trans(Tween.TRANS_BACK)
+	tween.tween_property(label, "scale", Vector2.ONE, 0.16).set_delay(0.16)
+	tween.tween_property(label, "modulate:a", 0.0, 0.42).set_delay(0.38)
 	tween.chain().tween_callback(anchor.queue_free)
 
 func _spawn_death_ghost(card: BaseCard) -> void:
@@ -5828,36 +6237,58 @@ func _spawn_death_ghost(card: BaseCard) -> void:
 	ghost.pivot_offset = ghost.size * 0.5
 	ghost.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.30, 0.015, 0.02, 0.90)
-	style.border_width_left = 2
-	style.border_width_top = 2
-	style.border_width_right = 2
-	style.border_width_bottom = 2
-	style.border_color = Color(1.0, 0.30, 0.22, 0.96)
-	style.corner_radius_top_left = 7
-	style.corner_radius_top_right = 7
-	style.corner_radius_bottom_left = 7
-	style.corner_radius_bottom_right = 7
+	style.bg_color = Color(0.14, 0.04, 0.03, 0.92)
+	style.border_color = Color(1.0, 0.42, 0.18, 0.96)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(6)
 	ghost.add_theme_stylebox_override("panel", style)
 	_feedback_clip.add_child(ghost)
 	_register_transient_feedback_anchor(ghost, card, true)
 
-	var label := Label.new()
-	label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	label.text = "YOK\nEDİLDİ"
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	label.add_theme_font_size_override("font_size", 10)
-	label.add_theme_color_override("font_color", Color(1.0, 0.86, 0.76))
-	label.add_theme_color_override("font_outline_color", Color.BLACK)
-	label.add_theme_constant_override("outline_size", 3)
-	ghost.add_child(label)
-	death_feedback_count += 1
+	# Preserve the dying card's illustration inside the burn-dissolve shader!
+	if card.card_art:
+		var art_ghost := TextureRect.new()
+		art_ghost.texture = card.card_art
+		art_ghost.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		art_ghost.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		art_ghost.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		art_ghost.offset_left = 3.0
+		art_ghost.offset_top = 3.0
+		art_ghost.offset_right = -3.0
+		art_ghost.offset_bottom = -3.0
+		art_ghost.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var mat := ShaderMaterial.new()
+		mat.shader = CARD_DISSOLVE_SHADER
+		mat.set_shader_parameter("progress", 0.0)
+		mat.set_shader_parameter("edge_color", Color(1.0, 0.45, 0.14, 1.0))
+		art_ghost.material = mat
+		ghost.add_child(art_ghost)
+		var dissolve_tw := create_tween().bind_node(art_ghost)
+		dissolve_tw.tween_method(func(v: float): mat.set_shader_parameter("progress", v), 0.0, 1.0, 0.52)
 
-	var tween := create_tween().bind_node(ghost).set_parallel(true).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween.tween_property(ghost, "scale", Vector2(1.16, 1.16), 0.46)
-	tween.tween_property(ghost, "modulate:a", 0.0, 0.46).set_delay(0.12)
+	# Glowing ember CPUParticles2D burst
+	if not MatchSetup.fast_mode:
+		var particles := CPUParticles2D.new()
+		particles.position = ghost.size * 0.5
+		particles.one_shot = true
+		particles.explosiveness = 0.85
+		particles.amount = 18
+		particles.lifetime = 0.55
+		particles.direction = Vector2(0.0, -1.0)
+		particles.spread = 150.0
+		particles.initial_velocity_min = 28.0
+		particles.initial_velocity_max = 86.0
+		particles.gravity = Vector2(0.0, -35.0)
+		particles.scale_amount_min = 2.0
+		particles.scale_amount_max = 4.5
+		particles.color = Color(1.0, 0.58, 0.18, 0.95)
+		particles.emitting = true
+		ghost.add_child(particles)
+
+	death_feedback_count += 1
+	var tween := create_tween().bind_node(ghost).set_parallel(true).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(ghost, "scale", Vector2(1.12, 1.12), 0.50)
+	tween.tween_property(ghost, "modulate:a", 0.0, 0.42).set_delay(0.14)
 	tween.chain().tween_callback(ghost.queue_free)
 
 func _place_board_slot(slot: CardSlot, local_position: Vector2, slot_size: Vector2, layout_scale: float) -> void:
@@ -5897,9 +6328,19 @@ func _configure_deck_frames(viewport_size: Vector2) -> void:
 	var side_pad = clamp(hud.size.x * 0.055, 14.0, 20.0)
 	var action_width = max(170.0, hud.size.x - (side_pad * 2.0))
 	var action_left = (hud.size.x - action_width) * 0.5
+	if _scenario_objectives_button:
+		_scenario_objectives_button.anchor_left = 0.0
+		_scenario_objectives_button.anchor_top = 0.0
+		_scenario_objectives_button.anchor_right = 0.0
+		_scenario_objectives_button.anchor_bottom = 0.0
+		_scenario_objectives_button.offset_left = action_left
+		_scenario_objectives_button.offset_top = 12.0
+		_scenario_objectives_button.offset_right = action_left + action_width
+		_scenario_objectives_button.offset_bottom = 56.0
+		_scenario_objectives_button.z_index = 10
 
-	var button_height = 54.0
-	var button_top = viewport_size.y - button_height - 18.0
+	var button_height = 52.0
+	var button_top = viewport_size.y - button_height - 16.0
 	end_turn_button.anchor_left = 0.0
 	end_turn_button.anchor_top = 0.0
 	end_turn_button.anchor_right = 0.0
@@ -5909,50 +6350,74 @@ func _configure_deck_frames(viewport_size: Vector2) -> void:
 	end_turn_button.offset_right = action_left + action_width
 	end_turn_button.offset_bottom = button_top + button_height
 
-	var auto_attack_height = 38.0
-	var auto_attack_top = button_top - auto_attack_height - 8.0
+	_layout_sidebar_action_controls()
+
+func _layout_sidebar_action_controls() -> void:
+	if not hud or not end_turn_button:
+		return
+	var viewport_size := get_viewport_rect().size
+	if viewport_size.x <= 0.0 or viewport_size.y <= 0.0:
+		return
+	var side_pad: float = 16.0
+	var action_width: float = maxf(160.0, float(hud.size.x) - (side_pad * 2.0))
+	var action_left: float = (float(hud.size.x) - action_width) * 0.5
+	var cursor_top: float = float(end_turn_button.offset_top)
+
+	var auto_attack_height := 40.0
 	if _auto_attack_panel:
+		if _auto_attack_panel.visible:
+			cursor_top -= auto_attack_height + 8.0
 		_auto_attack_panel.anchor_left = 0.0
 		_auto_attack_panel.anchor_top = 0.0
 		_auto_attack_panel.anchor_right = 0.0
 		_auto_attack_panel.anchor_bottom = 0.0
 		_auto_attack_panel.offset_left = action_left
-		_auto_attack_panel.offset_top = auto_attack_top
+		_auto_attack_panel.offset_top = cursor_top
 		_auto_attack_panel.offset_right = action_left + action_width
-		_auto_attack_panel.offset_bottom = auto_attack_top + auto_attack_height
+		_auto_attack_panel.offset_bottom = cursor_top + auto_attack_height
 
-	var token_height = 40.0
-	var token_top = auto_attack_top - token_height - 8.0
+	var supply_height := 40.0
+	if _tactical_supply_button:
+		if _tactical_supply_button.visible:
+			cursor_top -= supply_height + 8.0
+		_tactical_supply_button.anchor_left = 0.0
+		_tactical_supply_button.anchor_top = 0.0
+		_tactical_supply_button.anchor_right = 0.0
+		_tactical_supply_button.anchor_bottom = 0.0
+		_tactical_supply_button.offset_left = action_left
+		_tactical_supply_button.offset_top = cursor_top
+		_tactical_supply_button.offset_right = action_left + action_width
+		_tactical_supply_button.offset_bottom = cursor_top + supply_height
+
+	var token_height := 40.0
 	if _preparation_token_button:
+		if _preparation_token_button.visible:
+			cursor_top -= token_height + 8.0
 		_preparation_token_button.anchor_left = 0.0
 		_preparation_token_button.anchor_top = 0.0
 		_preparation_token_button.anchor_right = 0.0
 		_preparation_token_button.anchor_bottom = 0.0
 		_preparation_token_button.offset_left = action_left
-		_preparation_token_button.offset_top = token_top
+		_preparation_token_button.offset_top = cursor_top
 		_preparation_token_button.offset_right = action_left + action_width
-		_preparation_token_button.offset_bottom = token_top + token_height
+		_preparation_token_button.offset_bottom = cursor_top + token_height
 
-	var phase_height = 40.0
-	var phase_top = token_top - phase_height - 6.0
+	var phase_height := 48.0
 	if _phase_label:
+		if _phase_label.visible:
+			cursor_top -= phase_height + 6.0
 		_phase_label.anchor_left = 0.0
 		_phase_label.anchor_top = 0.0
 		_phase_label.anchor_right = 0.0
 		_phase_label.anchor_bottom = 0.0
 		_phase_label.offset_left = action_left
-		_phase_label.offset_top = phase_top
+		_phase_label.offset_top = cursor_top
 		_phase_label.offset_right = action_left + action_width
-		_phase_label.offset_bottom = phase_top + phase_height
+		_phase_label.offset_bottom = cursor_top + phase_height
 
 	if _preview_panel:
-		var preview_top := 12.0
-		var lower_control_top: float = auto_attack_top
-		if _preparation_token_button and _preparation_token_button.visible:
-			lower_control_top = minf(lower_control_top, token_top)
-		if _phase_label and _phase_label.visible:
-			lower_control_top = minf(lower_control_top, phase_top)
-		var preview_bottom = max(preview_top + 180.0, lower_control_top - 12.0)
+		var preview_top := 66.0 if _scenario_objectives_button else 12.0
+		var preview_bottom := maxf(preview_top + 180.0, cursor_top - 10.0)
 		_preview_panel.anchor_left = 0.0
 		_preview_panel.anchor_top = 0.0
 		_preview_panel.anchor_right = 0.0
@@ -5987,13 +6452,14 @@ func _configure_deck_frame(deck_panel: Control, local_position: Vector2, panel_s
 	deck_panel.z_index = 2
 
 func _layout_phase_banner(viewport_size: Vector2) -> void:
+	_layout_match_flow_chrome(viewport_size)
 	if not _phase_banner_panel:
 		return
 	var sidebar_width: float = hud.size.x if hud else 0.0
 	var playfield_right: float = viewport_size.x - sidebar_width
 	var banner_width := minf(PHASE_BANNER_SIZE.x, maxf(280.0, playfield_right - 32.0))
 	var banner_left := maxf(12.0, (playfield_right - banner_width) * 0.5)
-	var banner_top := _get_top_playfield_reserved_height(viewport_size) + 6.0
+	var banner_top := _get_top_playfield_reserved_height(viewport_size) + 46.0
 	_phase_banner_panel.anchor_left = 0.0
 	_phase_banner_panel.anchor_top = 0.0
 	_phase_banner_panel.anchor_right = 0.0
@@ -6045,7 +6511,7 @@ func force_show_tutorial(step_index: int = 0) -> void:
 	_refresh_phase_ui()
 
 func _maybe_show_first_match_tutorial() -> void:
-	if not _tutorial_overlay or DisplayServer.get_name() == "headless":
+	if MatchSetup.is_scenario_match() or not _tutorial_overlay or DisplayServer.get_name() == "headless":
 		return
 	if not _is_first_match_tutorial_enabled():
 		return
@@ -6225,6 +6691,357 @@ func _create_toast_ui_nodes() -> void:
 	_toast_panel.add_child(_toast_label)
 	_position_toast_panel(get_viewport_rect().size)
 
+func _create_match_flow_chrome() -> void:
+	# 1. Slim top-center Match Flow Strip (HQ Healths + Turn Owner + 3-Step Phase Stepper + Dominion)
+	_match_flow_bar = Panel.new()
+	_match_flow_bar.name = "MatchFlowBar"
+	_match_flow_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_match_flow_bar.z_index = 230
+	var bar_style := UI.inset_style(Color(0.045, 0.042, 0.044, 0.92), UI.BRASS, 5)
+	bar_style.border_color = Color(UI.BRASS, 0.62)
+	bar_style.content_margin_left = 10.0
+	bar_style.content_margin_right = 10.0
+	bar_style.content_margin_top = 3.0
+	bar_style.content_margin_bottom = 3.0
+	_match_flow_bar.add_theme_stylebox_override("panel", bar_style)
+	add_child(_match_flow_bar)
+
+	var bar_row := HBoxContainer.new()
+	bar_row.name = "FlowRow"
+	bar_row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bar_row.offset_left = 10.0
+	bar_row.offset_right = -10.0
+	bar_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	bar_row.add_theme_constant_override("separation", 10)
+	bar_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_match_flow_bar.add_child(bar_row)
+
+	_flow_own_hq_label = Label.new()
+	_flow_own_hq_label.name = "FlowOwnHQ"
+	_flow_own_hq_label.add_theme_font_override("font", UI.DISPLAY_FONT)
+	_flow_own_hq_label.add_theme_font_size_override("font_size", 11)
+	_flow_own_hq_label.add_theme_color_override("font_color", UI.TEAM_PLAYER.lightened(0.30))
+	_flow_own_hq_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar_row.add_child(_flow_own_hq_label)
+
+	var sep_l := Label.new()
+	sep_l.text = "|"
+	sep_l.add_theme_color_override("font_color", Color(UI.BRASS, 0.45))
+	sep_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar_row.add_child(sep_l)
+
+	_flow_turn_pill = Label.new()
+	_flow_turn_pill.name = "FlowTurnPill"
+	_flow_turn_pill.add_theme_font_override("font", UI.DISPLAY_FONT)
+	_flow_turn_pill.add_theme_font_size_override("font_size", 11)
+	_flow_turn_pill.add_theme_color_override("font_color", UI.BRASS_BRIGHT)
+	_flow_turn_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar_row.add_child(_flow_turn_pill)
+
+	var phase_specs := [
+		[GameManager.TurnPhase.PREPARATION, "HAZIRLIK"],
+		[GameManager.TurnPhase.COMBAT, "ÇATIŞMA"],
+		[GameManager.TurnPhase.END, "TUR SONU"],
+	]
+	_flow_phase_labels.clear()
+	for idx in range(phase_specs.size()):
+		if idx > 0:
+			var arrow := Label.new()
+			arrow.text = "›"
+			arrow.add_theme_font_size_override("font_size", 12)
+			arrow.add_theme_color_override("font_color", Color(UI.TEXT_MUTED, 0.55))
+			arrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			bar_row.add_child(arrow)
+		var step_lbl := Label.new()
+		step_lbl.text = tr(str(phase_specs[idx][1]))
+		step_lbl.add_theme_font_override("font", UI.DISPLAY_FONT)
+		step_lbl.add_theme_font_size_override("font_size", 10)
+		step_lbl.add_theme_color_override("font_color", Color(UI.TEXT_MUTED, 0.65))
+		step_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bar_row.add_child(step_lbl)
+		_flow_phase_labels[int(phase_specs[idx][0])] = step_lbl
+
+	_flow_dominion_label = Label.new()
+	_flow_dominion_label.name = "FlowDominion"
+	_flow_dominion_label.visible = false
+	_flow_dominion_label.add_theme_font_override("font", UI.DISPLAY_FONT)
+	_flow_dominion_label.add_theme_font_size_override("font_size", 11)
+	_flow_dominion_label.add_theme_color_override("font_color", UI.BRASS_BRIGHT)
+	_flow_dominion_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar_row.add_child(_flow_dominion_label)
+
+	var sep_r := Label.new()
+	sep_r.text = "|"
+	sep_r.add_theme_color_override("font_color", Color(UI.BRASS, 0.45))
+	sep_r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar_row.add_child(sep_r)
+
+	_flow_enemy_hq_label = Label.new()
+	_flow_enemy_hq_label.name = "FlowEnemyHQ"
+	_flow_enemy_hq_label.add_theme_font_override("font", UI.DISPLAY_FONT)
+	_flow_enemy_hq_label.add_theme_font_size_override("font_size", 11)
+	_flow_enemy_hq_label.add_theme_color_override("font_color", UI.TEAM_OPPONENT.lightened(0.28))
+	_flow_enemy_hq_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar_row.add_child(_flow_enemy_hq_label)
+
+	# 2. Collapsible Live Battle Log ("SAVAŞ GÜNLÜĞÜ")
+	_battle_log_toggle = Button.new()
+	_battle_log_toggle.name = "BattleLogToggle"
+	_battle_log_toggle.text = tr("GÜNLÜK")
+	_battle_log_toggle.tooltip_text = tr("Son hamleleri ve hasar dökümünü aç/kapat")
+	_battle_log_toggle.z_index = 235
+	_battle_log_toggle.add_theme_font_size_override("font_size", 11)
+	UI.style_button(_battle_log_toggle, UI.BRASS, false, true)
+	_battle_log_toggle.pressed.connect(func():
+		_battle_log_expanded = not _battle_log_expanded
+		if _battle_log_panel:
+			_battle_log_panel.visible = _battle_log_expanded
+		_battle_log_toggle.text = tr("GÜNLÜK ▾") if _battle_log_expanded else tr("GÜNLÜK")
+	)
+	add_child(_battle_log_toggle)
+
+	_battle_log_panel = PanelContainer.new()
+	_battle_log_panel.name = "BattleLogPanel"
+	_battle_log_panel.visible = false
+	_battle_log_panel.z_index = 234
+	_battle_log_panel.add_theme_stylebox_override("panel", UI.inset_style(Color(0.04, 0.038, 0.040, 0.94), UI.BRASS, 5))
+	add_child(_battle_log_panel)
+
+	var log_scroll := ScrollContainer.new()
+	log_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	log_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	log_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_battle_log_panel.add_child(log_scroll)
+
+	_battle_log_list = VBoxContainer.new()
+	_battle_log_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_battle_log_list.add_theme_constant_override("separation", 4)
+	log_scroll.add_child(_battle_log_list)
+
+	# 3. AI Card Spotlight Overlay Layer
+	_ai_spotlight_layer = Control.new()
+	_ai_spotlight_layer.name = "AISpotlightLayer"
+	_ai_spotlight_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_ai_spotlight_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ai_spotlight_layer.z_index = 250
+	add_child(_ai_spotlight_layer)
+
+	_layout_match_flow_chrome(get_viewport_rect().size)
+	_refresh_match_flow_chrome()
+
+
+func _layout_match_flow_chrome(viewport_size: Vector2) -> void:
+	if viewport_size.x <= 0.0 or viewport_size.y <= 0.0:
+		return
+	var sidebar_width: float = float(hud.size.x) if hud else 0.0
+	var playfield_width: float = maxf(320.0, viewport_size.x - sidebar_width)
+	if _match_flow_bar:
+		var bar_w: float = clampf(playfield_width * 0.64, 420.0, 620.0)
+		var bar_x: float = maxf(104.0, (playfield_width - bar_w) * 0.5)
+		_match_flow_bar.anchor_left = 0.0
+		_match_flow_bar.anchor_top = 0.0
+		_match_flow_bar.anchor_right = 0.0
+		_match_flow_bar.anchor_bottom = 0.0
+		_match_flow_bar.offset_left = bar_x
+		_match_flow_bar.offset_top = 8.0
+		_match_flow_bar.offset_right = bar_x + bar_w
+		_match_flow_bar.offset_bottom = 40.0
+	if _battle_log_toggle:
+		_battle_log_toggle.anchor_left = 0.0
+		_battle_log_toggle.anchor_top = 0.0
+		_battle_log_toggle.anchor_right = 0.0
+		_battle_log_toggle.anchor_bottom = 0.0
+		_battle_log_toggle.offset_left = 14.0
+		_battle_log_toggle.offset_top = 8.0
+		_battle_log_toggle.offset_right = 98.0
+		_battle_log_toggle.offset_bottom = 38.0
+	if _battle_log_panel:
+		_battle_log_panel.anchor_left = 0.0
+		_battle_log_panel.anchor_top = 0.0
+		_battle_log_panel.anchor_right = 0.0
+		_battle_log_panel.anchor_bottom = 0.0
+		_battle_log_panel.offset_left = 14.0
+		_battle_log_panel.offset_top = 44.0
+		_battle_log_panel.offset_right = 272.0
+		_battle_log_panel.offset_bottom = 228.0
+
+
+func _refresh_match_flow_chrome() -> void:
+	if not _match_flow_bar or not game_manager:
+		return
+	var own_id: int = _get_hand_perspective_player_id()
+	var enemy_id: int = 2 if own_id == 1 else 1
+	var own_hp: int = int(game_manager.player_hq_health.get(own_id, GameRules.HEADQUARTERS_HEALTH))
+	var enemy_hp: int = int(game_manager.player_hq_health.get(enemy_id, GameRules.HEADQUARTERS_HEALTH))
+	if _flow_own_hq_label:
+		_flow_own_hq_label.text = "%s %d" % [tr("MERKEZ"), own_hp]
+	if _flow_enemy_hq_label:
+		_flow_enemy_hq_label.text = "%s %d" % [tr("RAKİP"), enemy_hp]
+	if _flow_turn_pill:
+		var is_own_turn: bool = int(game_manager.active_player_id) == own_id
+		_flow_turn_pill.text = tr("SIRA SENDE") if is_own_turn else tr("RAKİP SIRASI")
+		_flow_turn_pill.add_theme_color_override(
+			"font_color",
+			UI.TEAM_PLAYER.lightened(0.34) if is_own_turn else UI.TEAM_OPPONENT.lightened(0.32)
+		)
+	var current_phase_id: int = int(game_manager.current_phase)
+	for phase_key in _flow_phase_labels.keys():
+		var lbl := _flow_phase_labels[phase_key] as Label
+		if not lbl:
+			continue
+		var is_active: bool = int(phase_key) == current_phase_id
+		lbl.add_theme_color_override("font_color", UI.BRASS_BRIGHT if is_active else Color(UI.TEXT_MUTED, 0.50))
+		lbl.add_theme_font_size_override("font_size", 11 if is_active else 10)
+	if _flow_dominion_label:
+		var is_dom := MatchSetup.is_dominion()
+		_flow_dominion_label.visible = is_dom
+		if is_dom:
+			var own_score: int = int(game_manager.dominion_scores.get(own_id, 0))
+			var enemy_score: int = int(game_manager.dominion_scores.get(enemy_id, 0))
+			_flow_dominion_label.text = tr("HAK %d-%d") % [own_score, enemy_score]
+
+
+func _append_battle_log(summary: String, accent: Color = UI.PARCHMENT, card_type: String = "", card_id: String = "") -> void:
+	if summary.strip_edges().is_empty():
+		return
+	_battle_log_entries.push_front({
+		"text": summary,
+		"color": accent,
+		"card_type": card_type,
+		"card_id": card_id,
+		"turn": int(game_manager.round_count) if game_manager else 1,
+	})
+	if _battle_log_entries.size() > 14:
+		_battle_log_entries.resize(14)
+	if not _battle_log_list:
+		return
+	for child in _battle_log_list.get_children():
+		child.queue_free()
+	for entry in _battle_log_entries:
+		var row_btn := Button.new()
+		row_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		row_btn.flat = true
+		row_btn.text = "R%d • %s" % [int(entry.get("turn", 1)), str(entry.get("text", ""))]
+		row_btn.clip_text = true
+		row_btn.custom_minimum_size = Vector2(0.0, 22.0)
+		row_btn.add_theme_font_override("font", UI.BODY_MEDIUM_FONT)
+		row_btn.add_theme_font_size_override("font_size", 11)
+		row_btn.add_theme_color_override("font_color", entry.get("color", UI.PARCHMENT))
+		row_btn.add_theme_color_override("font_hover_color", Color.WHITE)
+		var entry_type := str(entry.get("card_type", ""))
+		var entry_id := str(entry.get("card_id", ""))
+		if not entry_type.is_empty() and not entry_id.is_empty():
+			row_btn.pressed.connect(func():
+				var temp_card := _instantiate_card_from_ref({"card_type": entry_type, "card_id": entry_id}, 1)
+				if temp_card:
+					_show_card_preview(temp_card)
+					temp_card.queue_free()
+			)
+		_battle_log_list.add_child(row_btn)
+
+
+func _refresh_end_turn_pulse() -> void:
+	if not end_turn_button or not game_manager:
+		return
+	var should_pulse := false
+	var active_id: int = int(game_manager.active_player_id)
+	if (
+		bool(game_manager.is_game_active)
+		and bool(game_manager.is_match_started)
+		and not MatchSetup.is_ai_player(active_id)
+		and not end_turn_button.disabled
+		and not MatchSetup.fast_mode
+	):
+		if game_manager.current_phase == GameManager.TurnPhase.COMBAT:
+			var has_ready_attacker := false
+			for b_card in get_board_cards(active_id):
+				if CombatResolver.get_attacker_error(game_manager, b_card).is_empty():
+					has_ready_attacker = true
+					break
+			should_pulse = not has_ready_attacker
+		elif game_manager.current_phase == GameManager.TurnPhase.PREPARATION:
+			var has_any_play := false
+			for h_card in get_hand_cards(active_id):
+				if _is_hand_card_currently_playable(h_card):
+					has_any_play = true
+					break
+			if not has_any_play:
+				for b_card in get_board_cards(active_id):
+					if ProgressionResolver.get_upgrade_start_error(game_manager, b_card).is_empty():
+						has_any_play = true
+						break
+			should_pulse = not has_any_play
+	if should_pulse:
+		if not _end_turn_pulse_tween or not _end_turn_pulse_tween.is_valid():
+			_end_turn_pulse_tween = create_tween().bind_node(end_turn_button).set_loops()
+			_end_turn_pulse_tween.tween_property(end_turn_button, "modulate", Color(1.18, 1.12, 0.92, 1.0), 0.55)
+			_end_turn_pulse_tween.tween_property(end_turn_button, "modulate", Color.WHITE, 0.55)
+	else:
+		if _end_turn_pulse_tween and _end_turn_pulse_tween.is_valid():
+			_end_turn_pulse_tween.kill()
+		_end_turn_pulse_tween = null
+		end_turn_button.modulate = Color.WHITE
+
+
+func animate_ai_card_deploy(card: BaseCard, player_id: int) -> void:
+	if not card or not is_instance_valid(card) or MatchSetup.fast_mode:
+		return
+	var hand = _get_hand_for_player(player_id)
+	var origin_center := hand.get_global_rect().get_center() if hand else Vector2(get_viewport_rect().size.x * 0.4, 40.0)
+	card.animate_move_from(origin_center)
+
+
+func show_ai_card_spotlight(card: BaseCard, target_slot: CardSlot) -> void:
+	if not card or not is_instance_valid(card) or not _ai_spotlight_layer or MatchSetup.fast_mode:
+		return
+	var card_type := card._get_card_type_key()
+	var preview := _instantiate_card_from_ref({"card_type": card_type, "card_id": card.card_id}, card.owner_id)
+	if not preview:
+		return
+	var container := PanelContainer.new()
+	container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	container.add_theme_stylebox_override("panel", UI.inset_style(Color(0.04, 0.035, 0.04, 0.95), UI.TEAM_OPPONENT, 6))
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	container.add_child(vbox)
+	var caption := Label.new()
+	caption.text = tr("RAKİP OYNADI: %s") % tr(card.card_name).to_upper()
+	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	caption.add_theme_font_override("font", UI.DISPLAY_FONT)
+	caption.add_theme_font_size_override("font_size", 11)
+	caption.add_theme_color_override("font_color", UI.TEAM_OPPONENT.lightened(0.32))
+	vbox.add_child(caption)
+	var mount := Control.new()
+	mount.custom_minimum_size = Vector2(150.0, 210.0)
+	mount.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_child(mount)
+	preview.is_public_preview = true
+	preview.is_draggable = false
+	preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	preview.scale = Vector2(0.75, 0.75)
+	preview.position = Vector2(-25.0, -35.0)
+	mount.add_child(preview)
+	_ai_spotlight_layer.add_child(container)
+	var playfield_w: float = get_viewport_rect().size.x - (float(hud.size.x) if hud else 0.0)
+	container.position = Vector2(maxf(20.0, playfield_w * 0.5 - 92.0), 66.0)
+	container.modulate.a = 0.0
+	if _feedback_layer and target_slot and is_instance_valid(target_slot):
+		_feedback_layer.play_spell_beam(
+			_to_feedback_point(container.position + Vector2(92.0, 120.0)),
+			_to_feedback_point(target_slot.get_global_rect().get_center()),
+			UI.get_card_type_color(card_type),
+			4.5,
+			0.68
+		)
+	var tw := create_tween().bind_node(container)
+	tw.tween_property(container, "modulate:a", 1.0, 0.14)
+	tw.tween_interval(0.52)
+	tw.tween_property(container, "modulate:a", 0.0, 0.16)
+	await tw.finished
+	if is_instance_valid(container):
+		container.queue_free()
+
+
 func _build_toast_style(accent_color: Color) -> StyleBoxFlat:
 	var style = StyleBoxFlat.new()
 	style.bg_color = Color(0.035, 0.032, 0.029, 0.985)
@@ -6252,7 +7069,7 @@ func _position_toast_panel(viewport_size: Vector2) -> void:
 	var arena_width := _board_view_rect.size.x if _board_view_rect.size.x > 0.0 else viewport_size.x
 	var toast_width = min(TOAST_PANEL_SIZE.x, max(220.0, arena_width - 32.0))
 	var toast_height = TOAST_PANEL_SIZE.y
-	var toast_top = 18.0
+	var toast_top = 48.0
 	if top_hud and top_hud.visible:
 		toast_top = max(toast_top, top_hud.position.y + top_hud.size.y + 8.0)
 	_toast_panel.anchor_left = 0.0
@@ -6337,7 +7154,7 @@ func _can_preview_card(card: BaseCard) -> bool:
 	if card.current_slot == null:
 		var visible_hand_owner: int = (
 			MatchSetup.human_player_id
-			if MatchSetup.is_multiplayer_client()
+			if MatchSetup.is_multiplayer_player()
 			else (game_manager.active_player_id if game_manager else 0)
 		)
 		if visible_hand_owner != card.owner_id:
@@ -6532,24 +7349,55 @@ func _update_preview_details(source_card: BaseCard) -> void:
 	if not _preview_details_label or not source_card:
 		return
 
-	var level_text := tr("LEVEL %d") % source_card.card_level
-	if not source_card.selected_branch_name.is_empty():
-		level_text += " • %s" % tr(source_card.selected_branch_name)
-	var experience_text := tr("Experience %d/%d") % [source_card.experience, source_card.get_next_level_experience()]
-	var combat_text := tr("READY") if source_card.is_ready_for_combat() else tr("EXHAUSTED")
-	var combat_color := "#8fca89" if source_card.is_ready_for_combat() else "#ef7868"
+	var card_type_key := source_card._get_card_type_key()
+	var type_label := tr("MERKEZ") if source_card.is_headquarters() else tr(UI.get_card_type_label(card_type_key)).to_upper()
+	var rarity_label := tr(UI.get_rarity_label(source_card._get_rarity_enum_key())).to_upper()
+	var owner_tag := ""
+	if source_card.owner_id in [1, 2]:
+		owner_tag = tr("DOST") if source_card._is_friendly_to_local_viewer() else tr("RAKİP")
+	if _preview_details_header:
+		var header_parts: Array[String] = [type_label, rarity_label]
+		if not owner_tag.is_empty():
+			header_parts.append(owner_tag)
+		_preview_details_header.text = "  •  ".join(header_parts)
+		if source_card.owner_id in [1, 2] and not source_card._is_friendly_to_local_viewer():
+			_preview_details_header.add_theme_color_override("font_color", UI.TEAM_OPPONENT.lightened(0.24))
+		else:
+			_preview_details_header.add_theme_color_override("font_color", UI.get_card_type_color(card_type_key).lightened(0.24))
+
+	var lines: Array[String] = []
+	var is_board_unit := (
+		source_card.current_slot != null
+		and not source_card.is_headquarters()
+		and (source_card is HeroCard or source_card is SettlementCard)
+	)
+	if is_board_unit:
+		var level_text := tr("LEVEL %d") % source_card.card_level
+		if not source_card.selected_branch_name.is_empty():
+			level_text += " • %s" % tr(source_card.selected_branch_name)
+		var next_xp := source_card.get_next_level_experience()
+		var experience_text := tr("TP %d/%d") % [source_card.experience, next_xp] if source_card.card_level < GameRules.MAX_CARD_LEVEL else tr("AZAMİ")
+		var combat_text := tr("READY") if source_card.is_ready_for_combat() else tr("TÜKENDİ")
+		var combat_color := "#7ee088" if source_card.is_ready_for_combat() else "#ef7868"
+		lines.append("[b][color=#f2c45c]%s[/color][/b] [color=#c8bca4](%s)[/color]  •  [b][color=%s]%s[/color][/b]" % [
+			level_text, experience_text, combat_color, combat_text
+		])
+
+	var desc := tr(source_card.card_description).strip_edges()
+	if not desc.is_empty():
+		lines.append("[color=#f4ead5]%s[/color]" % desc)
+
+	if not source_card.attached_skill_name.is_empty():
+		lines.append("[b][color=#5ad8d0]%s:[/color][/b] [color=#e8f6f5]%s[/color]" % [
+			tr("BAĞLI BECERİ"), tr(source_card.attached_skill_name)
+		])
 
 	var trait_names: Array[String] = []
 	for trait_id in source_card.traits:
 		var display_name := CardKeywordGlossary.get_keyword_name(trait_id)
 		trait_names.append(display_name if not display_name.is_empty() else trait_id.capitalize())
-	var ability_text := ""
-	if not source_card.attached_skill_name.is_empty():
-		ability_text = tr("SKILL — %s") % tr(source_card.attached_skill_name)
-	elif not trait_names.is_empty():
-		ability_text = tr("TRAIT — %s") % " · ".join(trait_names)
-	else:
-		ability_text = tr("TRAIT — None")
+	if not trait_names.is_empty():
+		lines.append("[color=#e5c88a][b]%s:[/b] %s[/color]" % [tr("NİTELİK"), " · ".join(trait_names)])
 
 	var status_names: Array[String] = []
 	for status_id in ["stunned", "poison", "protected"]:
@@ -6559,16 +7407,10 @@ func _update_preview_details(source_card: BaseCard) -> void:
 		var status_entry := CardKeywordGlossary.STATUS_DEFINITIONS.get(status_id, {}) as Dictionary
 		var status_name := tr(str(status_entry.get("name", "")))
 		status_names.append("%s %d" % [status_name if not status_name.is_empty() else status_id.capitalize(), status_amount])
-	var status_text := tr("EFFECT — %s") % (" · ".join(status_names) if not status_names.is_empty() else tr("None"))
+	if not status_names.is_empty():
+		lines.append("[color=#9dd6ff][b]%s:[/b] %s[/color]" % [tr("DURUM"), " · ".join(status_names)])
 
-	_preview_details_label.text = "[font_size=12][b][color=#f2c45c]%s[/color][/b]  [color=#d6c6a8]%s[/color]\n[b][color=%s]%s[/color][/b]\n[color=#f0e2c5]%s[/color]\n[color=#c4b4e9]%s[/color][/font_size]" % [
-		level_text,
-		experience_text,
-		combat_color,
-		tr("STATUS — %s") % combat_text,
-		ability_text,
-		status_text,
-	]
+	_preview_details_label.text = "[font_size=12]%s[/font_size]" % "\n".join(lines)
 
 func _hide_card_preview() -> void:
 	if _preview_card and is_instance_valid(_preview_card):
@@ -6590,7 +7432,7 @@ func _refresh_hand_card_layouts() -> void:
 	_layout_hand_cards(p2_hand)
 
 func _get_locally_visible_hand_player_id() -> int:
-	if MatchSetup.is_multiplayer_client():
+	if MatchSetup.is_multiplayer_player():
 		return MatchSetup.human_player_id if MatchSetup.human_player_id in GameRules.PLAYER_IDS else 0
 	if MatchSetup.is_ai_match():
 		return MatchSetup.human_player_id if MatchSetup.human_player_id in GameRules.PLAYER_IDS else 0
@@ -6601,6 +7443,27 @@ func _get_locally_visible_hand_player_id() -> int:
 func _get_hand_perspective_player_id() -> int:
 	var player_id := _get_locally_visible_hand_player_id()
 	return player_id if player_id in GameRules.PLAYER_IDS else 1
+
+
+func _get_battlefield_perspective_player_id() -> int:
+	if (
+		(MatchSetup.is_multiplayer_player() or MatchSetup.is_ai_match())
+		and MatchSetup.human_player_id in GameRules.PLAYER_IDS
+	):
+		return MatchSetup.human_player_id
+	return 1
+
+
+func _is_player_on_south(player_id: int) -> bool:
+	return player_id == _get_battlefield_perspective_player_id()
+
+
+func _get_player_zone_world_rect(player_id: int) -> Rect2:
+	return _p1_zone_world_rect if player_id == 1 else _p2_zone_world_rect
+
+
+func _get_team_accent(player_id: int) -> Color:
+	return UI.TEAM_PLAYER if _is_player_on_south(player_id) else UI.TEAM_OPPONENT
 
 func _refresh_hand_visibility() -> void:
 	var visible_player_id := _get_hand_perspective_player_id()
@@ -6834,6 +7697,7 @@ func _deal_initial_hands() -> void:
 	_update_deck_ui()
 	_refresh_phase_ui()
 	call_deferred("_maybe_show_first_match_tutorial")
+	call_deferred("_maybe_show_scenario_briefing")
 	if MatchSetup.is_multiplayer_server():
 		var network_manager := _get_network_manager()
 		if network_manager:
@@ -6841,18 +7705,26 @@ func _deal_initial_hands() -> void:
 
 func _on_turn_draw_requested(player_id: int, card_count: int) -> void:
 	var total_draw_count: int = get_turn_start_draw_count(player_id, card_count)
-	var catch_up_count: int = maxi(0, total_draw_count - maxi(0, card_count))
-	for _index in range(total_draw_count):
+	var base_request: int = maxi(0, card_count)
+	var drawn_total: int = 0
+	var fatigue_applied: bool = false
+	for draw_index in range(total_draw_count):
 		var drew_card := await _draw_card_to_hand(player_id, false)
-		if not drew_card:
-			_apply_fatigue_damage(player_id)
-			if not game_manager.is_game_active:
-				break
-	if catch_up_count > 0 and game_manager and game_manager.is_game_active and not MatchSetup.fast_mode:
+		if drew_card:
+			drawn_total += 1
+		else:
+			# Catch-up hand refill must never multiply Fatigue damage on an
+			# empty deck: apply at most one Fatigue tick per turn start.
+			if not fatigue_applied and draw_index < base_request:
+				fatigue_applied = true
+				_apply_fatigue_damage(player_id)
+			break
+	var catch_up_drawn: int = maxi(0, drawn_total - base_request)
+	if catch_up_drawn > 0 and game_manager and game_manager.is_game_active and not MatchSetup.fast_mode:
 		show_toast(
 			tr("Your hand was filled to %d cards: %d reinforcement cards drawn.") % [
 				GameRules.MINIMUM_TURN_START_HAND,
-				catch_up_count,
+				catch_up_drawn,
 			],
 			Color(0.35, 0.82, 1.0),
 			"TAKVİYE ÇEKİŞİ"
@@ -6915,15 +7787,21 @@ func _apply_fatigue_damage(player_id: int) -> void:
 	if not bool(result.get("success", false)):
 		return
 	var hq := (p1_hq if player_id == 1 else p2_hq) as SettlementCard
+	var dmg: int = int(result.get("damage", 0))
 	if hq:
 		hq.health = int(result.get("remaining_health", 0))
+		if not MatchSetup.fast_mode:
+			hq.play_feedback_animation("damage")
+			_spawn_floating_feedback(tr("-%d YORGUNLUK") % dmg, hq, UI.BLOOD)
 	if not MatchSetup.fast_mode:
+		_play_board_impact_shake("damage", 1.1)
 		show_toast(
 			tr("Deck empty: Player %d's Headquarters took %d Fatigue Damage.") % [
 				player_id,
-				int(result.get("damage", 0)),
+				dmg,
 			],
-			Color(0.92, 0.38, 0.26)
+			UI.BLOOD,
+			tr("YORGUNLUK")
 		)
 	_update_hq_labels()
 
@@ -7096,11 +7974,10 @@ func _update_deck_ui() -> void:
 			continue
 
 		var deck: Array = _player_decks.get(player_id, [])
-		label.text = (
-			"DESTEN\n%d KART" % deck.size()
-			if player_id == perspective_player_id
-			else "RAKİP\n%d KART" % deck.size()
-		)
+		label.text = "%s\n%s" % [
+			tr("DESTEN") if player_id == perspective_player_id else tr("RAKİP"),
+			tr("%d KART") % deck.size(),
+		]
 		deck_panel.modulate = Color.WHITE
 		deck_panel.visible = true
 
@@ -7148,6 +8025,7 @@ func build_active_match_snapshot(last_save_reason: String = "otomatik") -> Dicti
 		"ai_difficulties": MatchSetup.ai_difficulties.duplicate(true),
 		"configured_player_decks": MatchSetup.player_decks.duplicate(true),
 		"configured_player_deck_names": MatchSetup.player_deck_names.duplicate(true),
+		"scenario_context": MatchSetup.get_scenario_context(),
 		"last_save_reason": last_save_reason,
 		"save_slot_id": MatchSetup.save_slot_id,
 		"save_slot_name": MatchSetup.save_slot_name,
@@ -7198,6 +8076,11 @@ func restore_active_match_snapshot(snapshot: Dictionary) -> Dictionary:
 		top_hud.set_ruleset(MatchSetup.ruleset)
 	MatchSetup.set_turn_duration_seconds(float(snapshot.get("turn_duration_seconds", MatchSetup.turn_duration_seconds)))
 	MatchSetup.set_auto_attack_allowed(bool(snapshot.get("auto_attack_allowed", true)))
+	var scenario_variant: Variant = snapshot.get("scenario_context", {})
+	if scenario_variant is Dictionary:
+		MatchSetup.set_scenario_context(scenario_variant as Dictionary)
+	else:
+		MatchSetup.clear_scenario_context()
 	if _auto_attack_panel:
 		_auto_attack_panel.visible = MatchSetup.auto_attack_allowed
 	if _auto_attack_checkbox:
@@ -7557,6 +8440,14 @@ func execute_network_action(player_id: int, action: String, payload: Dictionary)
 			return {
 				"success": token_used,
 				"message": "Hazırlık jetonu kullanıldı: +1 geçici Enerji." if token_used else "Hazırlık jetonu kullanılamadı.",
+			}
+		"tactical_supply":
+			var hand_node = _get_hand_for_player(player_id)
+			var hand_count: int = _get_hand_card_count(hand_node) if hand_node else 0
+			var supply_result: Dictionary = game_manager.use_tactical_supply(player_id, hand_count)
+			return {
+				"success": bool(supply_result.get("success", false)),
+				"message": "İkmal çekişi kullanıldı: +1 kart." if bool(supply_result.get("success", false)) else str(supply_result.get("error", "İkmal çekişi kullanılamadı.")),
 			}
 		"discard":
 			var discard_cards := _resolve_network_card_list(payload.get("card_ids", []), player_id, true)

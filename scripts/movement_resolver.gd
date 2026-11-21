@@ -3,9 +3,22 @@ class_name MovementResolver extends RefCounted
 ## Validates and resolves every voluntary Hero reposition. Validation completes
 ## before Energy is spent, so illegal destinations never consume resources.
 
-static func get_movement_energy_cost(card: BaseCard, game_manager: GameManager = null) -> int:
+static func get_movement_energy_cost(
+	card: BaseCard,
+	game_manager: GameManager = null,
+	target_slot: CardSlot = null
+) -> int:
 	var base_cost := GameRules.MOVEMENT_ENERGY_COST
-	if card and card.has_trait("wanderer"):
+	var is_same_lane_formation := (
+		card != null
+		and card.current_slot != null
+		and target_slot != null
+		and int(target_slot.lane_id) == int(card.current_slot.lane_id)
+		and target_slot.position_type != card.current_slot.position_type
+	)
+	if is_same_lane_formation:
+		base_cost = GameRules.SAME_LANE_MOVEMENT_ENERGY_COST
+	elif card and card.has_trait("wanderer"):
 		base_cost = 0
 	elif game_manager:
 		base_cost = EffectResolver.get_effect_action_cost(
@@ -37,9 +50,14 @@ static func get_movement_start_error(game_manager: GameManager, card: BaseCard) 
 		return "Yalnızca Hazır Kahraman hareket edebilir."
 	if card.has_moved_this_turn:
 		return "Bu Kahraman bu tur zaten hareket etti."
-	var movement_cost := get_movement_energy_cost(card, game_manager)
-	if movement_cost > 0 and not game_manager.has_enough_energy(card.owner_id, movement_cost):
-		return "Hareket için %d Enerji gerekiyor." % movement_cost
+	var cross_lane_cost := get_movement_energy_cost(card, game_manager, null)
+	if cross_lane_cost > 0 and not game_manager.has_enough_energy(card.owner_id, cross_lane_cost):
+		var same_lane_slot := _find_empty_same_lane_opposite_slot(game_manager, card)
+		if same_lane_slot:
+			var formation_cost := get_movement_energy_cost(card, game_manager, same_lane_slot)
+			if game_manager.has_enough_energy(card.owner_id, formation_cost):
+				return ""
+		return "Hareket için %d Enerji gerekiyor." % cross_lane_cost
 	return ""
 
 static func get_destination_error(
@@ -66,6 +84,9 @@ static func get_destination_error(
 	var origin := card.current_slot
 	if target_slot == origin:
 		return "Kahraman zaten bu yuvada."
+	var destination_cost := get_movement_energy_cost(card, game_manager, target_slot)
+	if destination_cost > 0 and not game_manager.has_enough_energy(card.owner_id, destination_cost):
+		return "Bu hareket için %d Enerji gerekiyor." % destination_cost
 	if card.has_trait("phasewalk"):
 		return ""
 	var same_lane := target_slot.lane_id == origin.lane_id
@@ -80,6 +101,24 @@ static func get_destination_error(
 	if same_line and lane_distance > 1:
 		return "Sol ile Sağ koridor arasında tek hamlede hareket edilemez."
 	return "Çapraz hareket yapılamaz."
+
+static func _find_empty_same_lane_opposite_slot(game_manager: GameManager, card: BaseCard) -> CardSlot:
+	if not game_manager or not game_manager.is_inside_tree() or not card or not card.current_slot:
+		return null
+	var origin := card.current_slot
+	for node in game_manager.get_tree().get_nodes_in_group(CardSlot.GROUP_NAME):
+		var slot := node as CardSlot
+		if (
+			slot
+			and slot.owner_id == card.owner_id
+			and slot.lane_id == origin.lane_id
+			and slot.position_type in [CardSlot.PositionType.FRONT, CardSlot.PositionType.BACK]
+			and slot.position_type != origin.position_type
+			and not slot.is_occupied
+			and slot.is_visible_in_tree()
+		):
+			return slot
+	return null
 
 static func get_legal_destination_slots(game_manager: GameManager, card: BaseCard) -> Array[CardSlot]:
 	var targets: Array[CardSlot] = []
@@ -106,16 +145,18 @@ static func resolve_move(
 	var destination_error := get_destination_error(game_manager, card, target_slot)
 	if not destination_error.is_empty():
 		return {"success": false, "error": destination_error, "energy_spent": 0}
-	var movement_cost := get_movement_energy_cost(card, game_manager)
+	var movement_cost := get_movement_energy_cost(card, game_manager, target_slot)
 	if movement_cost > 0 and not game_manager.spend_energy(card.owner_id, movement_cost):
 		return {"success": false, "error": "Hareket Enerjisi harcanamadı.", "energy_spent": 0}
 
 	var origin := card.current_slot
+	var origin_center := origin.get_global_rect().get_center()
 	origin.release_card()
 	card.current_slot = target_slot
 	target_slot.accept_card(card)
 	card.reparent(target_slot, true)
 	card.position = (target_slot.size - card.size) * 0.5
+	card.animate_move_from(origin_center)
 	card.mark_moved_this_turn()
 	var kept_ready := card.has_trait("wanderer")
 	var ready_source: SettlementCard = null

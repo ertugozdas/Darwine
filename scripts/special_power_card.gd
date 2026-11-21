@@ -58,8 +58,22 @@ func _update_ui() -> void:
 	super._update_ui()
 	if _power_type_lbl:
 		_power_type_lbl.text = tr(power_type)
+		_power_type_lbl.add_theme_color_override("font_color", UI.CARD_TYPE_SPELL.lightened(0.38))
 	if _intensity_lbl:
 		_intensity_lbl.text = str(intensity)
+		var intensity_color := UI.BRASS_BRIGHT
+		match effect_id:
+			"damage_target", "damage_lane", "blood_price":
+				intensity_color = Color(1.0, 0.56, 0.44)
+			"heal_target", "repair_structure":
+				intensity_color = Color(0.56, 0.95, 0.64)
+			"stun_target", "protect_target":
+				intensity_color = Color(0.54, 0.86, 1.0)
+			"poison_target":
+				intensity_color = Color(0.64, 0.95, 0.42)
+			"banish_target", "detach_skill":
+				intensity_color = Color(0.88, 0.56, 1.0)
+		_intensity_lbl.add_theme_color_override("font_color", intensity_color)
 
 func _update_visuals() -> void:
 	if card_template or _has_template_background():

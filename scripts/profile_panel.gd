@@ -24,6 +24,7 @@ var _banner_option: OptionButton
 
 func _ready() -> void:
 	name = "ProfileOverlay"
+	theme = UI.create_theme()
 	z_index = 610
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -62,7 +63,7 @@ func _build_interface() -> void:
 	var dim := ColorRect.new()
 	dim.name = "ProfileDim"
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	dim.color = Color(0.003, 0.005, 0.009, 0.94)
+	dim.color = Color(0.003, 0.005, 0.009, UI.MODAL_DIM_ALPHA)
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(dim)
 
@@ -216,8 +217,9 @@ func _build_overview_page() -> Control:
 
 	var stats := GridContainer.new()
 	stats.name = "ProfileStatsGrid"
-	stats.columns = 6
+	stats.columns = 3
 	stats.add_theme_constant_override("h_separation", 8)
+	stats.add_theme_constant_override("v_separation", 8)
 	content.add_child(stats)
 	for definition in [
 		["matches", "MAÇ"], ["wins", "ZAFER"], ["win_rate", "ZAFER ORANI"],
@@ -516,7 +518,7 @@ func _refresh_history() -> void:
 		var headline := Label.new()
 		headline.text = tr("%s • %s • %s • %d rounds") % [
 			tr(str(entry.get("ruleset_name", "Kuşatma"))), tr(str(entry.get("mode", "Yerel"))),
-			str(entry.get("deck_name", "İsimsiz Deste")), int(entry.get("rounds", 0))
+			tr(str(entry.get("deck_name", "İsimsiz Deste"))), int(entry.get("rounds", 0))
 		]
 		headline.add_theme_font_override("font", UI.BODY_BOLD_FONT)
 		copy.add_child(headline)

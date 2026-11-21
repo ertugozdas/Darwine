@@ -10,6 +10,7 @@ var _platform_rect := Rect2()
 var _board_view_rect := Rect2()
 var _player_zone_rects: Dictionary = {}
 var _team_standard_centers: Dictionary = {}
+var _perspective_player_id := 1
 var _active_player_id := 0
 var _turn_time_ratio := 1.0
 var _turn_timer_running := false
@@ -65,6 +66,15 @@ func set_turn_state(active_player_id: int, time_ratio: float = 1.0, is_running: 
 	_turn_time_ratio = clampf(time_ratio, 0.0, 1.0)
 	_turn_timer_running = is_running
 	queue_redraw()
+
+
+func set_perspective_player(player_id: int) -> void:
+	_perspective_player_id = player_id if player_id in GameRules.PLAYER_IDS else 1
+	queue_redraw()
+
+
+func _get_team_accent(player_id: int) -> Color:
+	return UI.TEAM_PLAYER if player_id == _perspective_player_id else UI.TEAM_OPPONENT
 
 
 func _draw() -> void:
@@ -164,13 +174,14 @@ func _draw() -> void:
 
 	var stable_view := _board_view_rect if _board_view_rect.size.x > 0.0 else arena_rect
 	var standard_centers := get_team_standard_centers()
+	var opponent_player_id := 2 if _perspective_player_id == 1 else 1
 	_draw_team_standard(
-		standard_centers[2],
+		standard_centers[opponent_player_id],
 		UI.TEAM_OPPONENT,
 		1.0
 	)
 	_draw_team_standard(
-		standard_centers[1],
+		standard_centers[_perspective_player_id],
 		UI.TEAM_PLAYER,
 		-1.0
 	)
@@ -182,7 +193,7 @@ func _draw() -> void:
 			if clipped_active_rect.size.x > 4.0 and clipped_active_rect.size.y > 4.0:
 				_draw_fire_border(
 					clipped_active_rect.grow(5.0),
-					UI.TEAM_PLAYER if _active_player_id == 1 else UI.TEAM_OPPONENT
+					_get_team_accent(_active_player_id)
 				)
 
 
@@ -196,9 +207,10 @@ func get_team_standard_centers() -> Dictionary:
 	)
 	# Fallback used before the battlefield supplies its world-space anchors.
 	var standard_x := clampf(stable_view.position.x + 164.0, 148.0, _playfield_right - 210.0)
+	var opponent_player_id := 2 if _perspective_player_id == 1 else 1
 	return {
-		1: Vector2(standard_x, stable_view.position.y + stable_view.size.y * 0.75),
-		2: Vector2(standard_x, stable_view.position.y + stable_view.size.y * 0.25),
+		_perspective_player_id: Vector2(standard_x, stable_view.position.y + stable_view.size.y * 0.75),
+		opponent_player_id: Vector2(standard_x, stable_view.position.y + stable_view.size.y * 0.25),
 	}
 
 

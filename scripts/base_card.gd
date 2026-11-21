@@ -154,6 +154,15 @@ var _effect_state_label: Label = null
 var _interaction_glow: Panel = null
 var _interaction_glow_style: StyleBoxFlat = null
 var _interaction_glow_tween: Tween = null
+var _type_ribbon_panel: Panel = null
+var _type_ribbon_label: Label = null
+var _rarity_trim_panel: Panel = null
+var _rarity_seal_label: Label = null
+var _owner_strip_panel: Panel = null
+var _playable_rim_panel: Panel = null
+var _hand_playable_state := false
+var _hand_playability_active := false
+var _board_ready_highlight := false
 var _feedback_tween: Tween = null
 var last_feedback_kind := ""
 var feedback_animation_count := 0
@@ -173,6 +182,7 @@ func _ready() -> void:
 	
 	# Instantiate layout controls if not present in scene tree
 	_create_ui_nodes_if_missing()
+	_create_identity_overlays()
 	_create_progression_badge()
 	_create_combat_state_badge()
 	_create_effect_state_badge()
@@ -219,7 +229,13 @@ func _process(delta: float) -> void:
 	# Apply hover rise/down position offset to the visual frame and card back
 	var target_y = 0.0
 	if current_slot == null:
-		if owner_id == 1:
+		var visible_hand_owner: int = int(gm.active_player_id) if gm else 1
+		if (
+			(MatchSetup.is_multiplayer_player() or MatchSetup.is_ai_match())
+			and MatchSetup.human_player_id in GameRules.PLAYER_IDS
+		):
+			visible_hand_owner = MatchSetup.human_player_id
+		if owner_id == visible_hand_owner:
 			target_y = -35.0 if _is_hovered else 0.0
 		else:
 			target_y = 35.0 if _is_hovered else 0.0
@@ -424,7 +440,13 @@ func _start_dragging() -> void:
 		if not gm.can_play_card(owner_id):
 			_show_game_toast("Kartlar yalnızca Hazırlık aşamasında oynanabilir.")
 			return
-		var action_type := "hero" if self is HeroCard else "settlement"
+		var action_type := "hero"
+		if self is SettlementCard:
+			action_type = "settlement"
+		elif self is UpgradeCard:
+			action_type = "upgrade"
+		elif self is SpecialPowerCard:
+			action_type = "special_power"
 		var resolved_cost := EffectResolver.get_effect_action_cost(gm, self, action_type, energy_cost)
 		if not current_slot and not gm.has_enough_energy(owner_id, resolved_cost):
 			_show_game_toast("Kartı oynayacak Enerji yok.")
@@ -487,7 +509,7 @@ func _stop_dragging() -> void:
 		# Multiplayer clients never mutate gameplay state optimistically. They send
 		# the intended drop to the dedicated server, return the local card to hand,
 		# and wait for the authoritative snapshot.
-		if MatchSetup.is_multiplayer_client():
+		if MatchSetup.is_multiplayer_player():
 			var network_battlefield := _get_battlefield_ui()
 			if network_battlefield and network_battlefield.has_method("request_network_card_drop"):
 				if not network_battlefield.request_network_card_drop(self, slot):
@@ -1053,27 +1075,52 @@ func play_attack_lunge(target_global_position: Vector2) -> bool:
 	var direction := source_center.direction_to(target_global_position)
 	if direction.length_squared() <= 0.001:
 		direction = Vector2.UP
-	var windup := -direction * 11.0
-	var lunge := direction * 31.0
-	var attack_tilt := clampf(direction.x * 0.075, -0.075, 0.075)
+	var windup := -direction * 12.0
+	var lunge := direction * 34.0
+	var attack_tilt := clampf(direction.x * 0.085, -0.085, 0.085)
 	last_feedback_kind = "attack"
 	feedback_animation_count += 1
-	_frame_panel.self_modulate = Color(1.0, 0.74, 0.34, 1.0)
-	_feedback_tween = create_tween().bind_node(self).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_IN_OUT)
-	_feedback_tween.tween_property(_frame_panel, "position", windup, 0.24)
-	_feedback_tween.parallel().tween_property(_frame_panel, "scale", Vector2(1.055, 1.055), 0.24)
-	_feedback_tween.parallel().tween_property(_frame_panel, "rotation", -attack_tilt * 0.55, 0.24)
-	_feedback_tween.tween_interval(0.14)
-	_feedback_tween.tween_property(_frame_panel, "position", lunge, 0.54)
-	_feedback_tween.parallel().tween_property(_frame_panel, "scale", Vector2(1.18, 1.18), 0.54)
-	_feedback_tween.parallel().tween_property(_frame_panel, "rotation", attack_tilt, 0.54)
-	_feedback_tween.tween_interval(0.20)
-	_feedback_tween.tween_property(_frame_panel, "position", Vector2.ZERO, 0.24)
-	_feedback_tween.parallel().tween_property(_frame_panel, "scale", Vector2.ONE, 0.24)
-	_feedback_tween.parallel().tween_property(_frame_panel, "rotation", 0.0, 0.24)
-	_feedback_tween.parallel().tween_property(_frame_panel, "self_modulate", Color.WHITE, 0.24)
+	_frame_panel.self_modulate = Color(1.0, 0.80, 0.42, 1.0)
+	_feedback_tween = create_tween().bind_node(self)
+	# Crisp windup -> explosive lunge -> brief hitstop -> snappy recoil (~0.62s total)
+	_feedback_tween.tween_property(_frame_panel, "position", windup, 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_feedback_tween.parallel().tween_property(_frame_panel, "scale", Vector2(1.06, 1.06), 0.14)
+	_feedback_tween.parallel().tween_property(_frame_panel, "rotation", -attack_tilt * 0.6, 0.14)
+	_feedback_tween.tween_property(_frame_panel, "position", lunge, 0.14).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_IN)
+	_feedback_tween.parallel().tween_property(_frame_panel, "scale", Vector2(1.18, 1.18), 0.14)
+	_feedback_tween.parallel().tween_property(_frame_panel, "rotation", attack_tilt, 0.14)
+	_feedback_tween.tween_interval(0.08)
+	_feedback_tween.tween_property(_frame_panel, "position", Vector2.ZERO, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_feedback_tween.parallel().tween_property(_frame_panel, "scale", Vector2.ONE, 0.22)
+	_feedback_tween.parallel().tween_property(_frame_panel, "rotation", 0.0, 0.22)
+	_feedback_tween.parallel().tween_property(_frame_panel, "self_modulate", Color.WHITE, 0.22)
 	_feedback_tween.tween_callback(_reset_feedback_visual)
 	return true
+
+
+func animate_move_from(origin_global_center: Vector2) -> void:
+	if not _frame_panel or not is_instance_valid(_frame_panel) or is_queued_for_deletion():
+		return
+	if MatchSetup.fast_mode:
+		return
+	if _feedback_tween and _feedback_tween.is_valid():
+		_feedback_tween.kill()
+	_reset_feedback_visual()
+	var current_center := get_global_rect().get_center()
+	var global_delta := origin_global_center - current_center
+	var eff_scale := Vector2(
+		maxf(0.1, absf(get_global_transform().get_scale().x)),
+		maxf(0.1, absf(get_global_transform().get_scale().y))
+	)
+	var local_delta := Vector2(global_delta.x / eff_scale.x, global_delta.y / eff_scale.y)
+	_frame_panel.position = local_delta
+	_frame_panel.scale = Vector2(1.08, 1.08)
+	_frame_panel.self_modulate = Color(0.65, 0.94, 1.0, 1.0)
+	_feedback_tween = create_tween().bind_node(self).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_feedback_tween.tween_property(_frame_panel, "position", Vector2.ZERO, 0.26)
+	_feedback_tween.parallel().tween_property(_frame_panel, "scale", Vector2.ONE, 0.26)
+	_feedback_tween.parallel().tween_property(_frame_panel, "self_modulate", Color.WHITE, 0.26)
+	_feedback_tween.tween_callback(_reset_feedback_visual)
 
 func _reset_feedback_visual() -> void:
 	if not _frame_panel or not is_instance_valid(_frame_panel):
@@ -1109,13 +1156,12 @@ func _create_interaction_glow() -> void:
 	_interaction_glow.z_index = CARD_CONTENT_Z_INDEX
 	_interaction_glow.visible = false
 	_interaction_glow_style = StyleBoxFlat.new()
+	_interaction_glow_style.draw_center = false
 	_interaction_glow_style.bg_color = Color(0.0, 0.0, 0.0, 0.0)
 	_interaction_glow_style.border_color = UI.BRASS_BRIGHT
 	_interaction_glow_style.set_border_width_all(4)
-	_interaction_glow_style.set_corner_radius_all(12)
-	_interaction_glow_style.shadow_color = Color(UI.BRASS_BRIGHT, 0.62)
-	_interaction_glow_style.shadow_size = 13
-	_interaction_glow_style.shadow_offset = Vector2.ZERO
+	_interaction_glow_style.set_corner_radius_all(10)
+	_interaction_glow_style.shadow_size = 0
 	_interaction_glow.add_theme_stylebox_override("panel", _interaction_glow_style)
 	_frame_panel.add_child(_interaction_glow)
 
@@ -1135,6 +1181,209 @@ func set_selection_visual(selected: bool, accent: Color = UI.BRASS_BRIGHT) -> vo
 	_interaction_glow_tween = create_tween().bind_node(_interaction_glow).set_loops()
 	_interaction_glow_tween.tween_property(_interaction_glow, "modulate:a", 1.0, 0.42)
 	_interaction_glow_tween.tween_property(_interaction_glow, "modulate:a", 0.48, 0.56)
+
+func _create_identity_overlays() -> void:
+	if not _frame_panel or _type_ribbon_panel:
+		return
+	# Crisp outer rarity rim (replaces heavy whole-frame color corruption)
+	_rarity_trim_panel = Panel.new()
+	_rarity_trim_panel.name = "RarityTrimRim"
+	_rarity_trim_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_rarity_trim_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_rarity_trim_panel.z_index = 3
+	_frame_panel.add_child(_rarity_trim_panel)
+
+	# Playable / Ready state rim highlight
+	_playable_rim_panel = Panel.new()
+	_playable_rim_panel.name = "PlayableStateRim"
+	_playable_rim_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_playable_rim_panel.offset_left = -2.0
+	_playable_rim_panel.offset_top = -2.0
+	_playable_rim_panel.offset_right = 2.0
+	_playable_rim_panel.offset_bottom = 2.0
+	_playable_rim_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_playable_rim_panel.z_index = 4
+	_playable_rim_panel.visible = false
+	_frame_panel.add_child(_playable_rim_panel)
+
+	# Clear Top Card-Type Ribbon (next to Energy badge)
+	_type_ribbon_panel = Panel.new()
+	_type_ribbon_panel.name = "CardTypeRibbon"
+	_type_ribbon_panel.position = Vector2(46.0, 6.0)
+	_type_ribbon_panel.size = Vector2(142.0, 18.0)
+	_type_ribbon_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_type_ribbon_panel.z_index = 5
+	_frame_panel.add_child(_type_ribbon_panel)
+
+	_type_ribbon_label = Label.new()
+	_type_ribbon_label.name = "Label"
+	_type_ribbon_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_type_ribbon_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_type_ribbon_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_type_ribbon_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_type_ribbon_label.add_theme_font_override("font", UI.DISPLAY_FONT)
+	_type_ribbon_label.add_theme_font_size_override("font_size", 9)
+	_type_ribbon_label.add_theme_color_override("font_color", Color(0.98, 0.96, 0.90))
+	_type_ribbon_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.95))
+	_type_ribbon_label.add_theme_constant_override("outline_size", 2)
+	_type_ribbon_panel.add_child(_type_ribbon_label)
+
+	# Bottom Rarity Seal Pill
+	_rarity_seal_label = Label.new()
+	_rarity_seal_label.name = "RaritySealLabel"
+	_rarity_seal_label.position = Vector2(48.0, 263.0)
+	_rarity_seal_label.size = Vector2(104.0, 14.0)
+	_rarity_seal_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_rarity_seal_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_rarity_seal_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_rarity_seal_label.z_index = 5
+	_rarity_seal_label.add_theme_font_override("font", UI.DISPLAY_FONT)
+	_rarity_seal_label.add_theme_font_size_override("font_size", 8)
+	_rarity_seal_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.95))
+	_rarity_seal_label.add_theme_constant_override("outline_size", 2)
+	_frame_panel.add_child(_rarity_seal_label)
+
+	# Board Ownership Strip (Friendly vs Enemy)
+	_owner_strip_panel = Panel.new()
+	_owner_strip_panel.name = "OwnerTeamStrip"
+	_owner_strip_panel.position = Vector2(14.0, 273.0)
+	_owner_strip_panel.size = Vector2(172.0, 5.0)
+	_owner_strip_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_owner_strip_panel.z_index = 6
+	_owner_strip_panel.visible = false
+	_frame_panel.add_child(_owner_strip_panel)
+
+
+func _get_card_type_glyph() -> String:
+	return ""
+
+
+func _refresh_identity_overlays() -> void:
+	var card_type_key := _get_card_type_key()
+	var is_effect := card_type_key == "effects"
+	var type_color := UI.get_card_type_color(card_type_key)
+	var rarity_key := _get_rarity_enum_key()
+	var rarity_color := UI.get_rarity_color(rarity_key)
+
+	if _type_ribbon_panel and _type_ribbon_label:
+		_type_ribbon_panel.visible = not is_effect and not card_type_key.is_empty()
+		if _type_ribbon_panel.visible:
+			var ribbon_style := StyleBoxFlat.new()
+			ribbon_style.bg_color = Color(0.05, 0.045, 0.048, 0.95).lerp(type_color, 0.34)
+			ribbon_style.border_color = Color(type_color.lightened(0.24), 0.98)
+			ribbon_style.set_border_width_all(1)
+			ribbon_style.border_width_bottom = 2
+			ribbon_style.set_corner_radius_all(4)
+			_type_ribbon_panel.add_theme_stylebox_override("panel", ribbon_style)
+			var type_label := tr("MERKEZ") if is_headquarters() else tr(UI.get_card_type_label(card_type_key)).to_upper()
+			_type_ribbon_label.text = type_label
+			_type_ribbon_label.add_theme_font_size_override("font_size", 10)
+			_type_ribbon_label.add_theme_color_override("font_color", Color(1.0, 0.98, 0.93))
+
+	if _rarity_trim_panel:
+		_rarity_trim_panel.visible = not is_effect and (_has_template_background() or card_template != null)
+		if _rarity_trim_panel.visible:
+			var rim_style := StyleBoxFlat.new()
+			rim_style.draw_center = false
+			rim_style.bg_color = Color(0.0, 0.0, 0.0, 0.0)
+			rim_style.border_color = Color(rarity_color, 0.94 if rarity != Rarity.COMMON else 0.58)
+			var rim_w := 3 if rarity in [Rarity.EPIC, Rarity.LEGENDARY] else 2
+			rim_style.set_border_width_all(rim_w)
+			rim_style.set_corner_radius_all(8)
+			_rarity_trim_panel.add_theme_stylebox_override("panel", rim_style)
+
+	if _rarity_seal_label:
+		_rarity_seal_label.visible = not is_effect and not card_type_key.is_empty() and not is_headquarters()
+		if _rarity_seal_label.visible:
+			_rarity_seal_label.text = tr(UI.get_rarity_label(rarity_key)).to_upper()
+			_rarity_seal_label.add_theme_font_size_override("font_size", 8)
+			_rarity_seal_label.add_theme_color_override("font_color", rarity_color.lightened(0.24))
+
+	if _owner_strip_panel:
+		var is_on_board := current_slot != null or _pending_slot != null
+		_owner_strip_panel.visible = is_on_board and owner_id in [1, 2]
+		if _owner_strip_panel.visible:
+			var is_friendly := _is_friendly_to_local_viewer()
+			var team_color := UI.TEAM_PLAYER if is_friendly else UI.TEAM_OPPONENT
+			var strip_style := StyleBoxFlat.new()
+			strip_style.bg_color = Color(team_color, 0.95)
+			strip_style.border_color = Color(team_color.lightened(0.32), 0.95)
+			strip_style.set_border_width_all(1)
+			strip_style.set_corner_radius_all(2)
+			_owner_strip_panel.add_theme_stylebox_override("panel", strip_style)
+
+
+func _is_friendly_to_local_viewer() -> bool:
+	if MatchSetup.is_multiplayer_player():
+		return owner_id == MatchSetup.human_player_id
+	if MatchSetup.is_ai_match():
+		return not MatchSetup.is_ai_player(owner_id)
+	var gm := GameManager.instance
+	if gm and gm.active_player_id in [1, 2]:
+		return owner_id == gm.active_player_id
+	return owner_id == 1
+
+
+func _get_rarity_enum_key() -> String:
+	match rarity:
+		Rarity.COMMON:
+			return "COMMON"
+		Rarity.RARE:
+			return "RARE"
+		Rarity.EPIC:
+			return "EPIC"
+		Rarity.LEGENDARY:
+			return "LEGENDARY"
+		_:
+			return "COMMON"
+
+
+func set_hand_playable(playable: bool, active_prep: bool) -> void:
+	_hand_playable_state = playable
+	_hand_playability_active = active_prep
+	_refresh_playability_visual()
+
+
+func set_board_ready_highlight(ready_to_attack: bool) -> void:
+	_board_ready_highlight = ready_to_attack
+	_refresh_playability_visual()
+
+
+func _refresh_playability_visual() -> void:
+	if not _frame_panel:
+		return
+	var is_on_board := current_slot != null or _pending_slot != null
+	if is_on_board:
+		var show_exhausted := not is_headquarters() and combat_state == CombatState.EXHAUSTED
+		_frame_panel.modulate = Color(0.72, 0.74, 0.79, 1.0) if show_exhausted else Color.WHITE
+		if _playable_rim_panel:
+			_playable_rim_panel.visible = _board_ready_highlight and not show_exhausted
+			if _playable_rim_panel.visible:
+				var ready_style := StyleBoxFlat.new()
+				ready_style.draw_center = false
+				ready_style.bg_color = Color(0.0, 0.0, 0.0, 0.0)
+				ready_style.border_color = Color(0.38, 0.92, 0.56, 0.98)
+				ready_style.set_border_width_all(3)
+				ready_style.set_corner_radius_all(9)
+				_playable_rim_panel.add_theme_stylebox_override("panel", ready_style)
+	else:
+		if _hand_playability_active:
+			_frame_panel.modulate = Color.WHITE if _hand_playable_state else Color(0.76, 0.76, 0.79, 1.0)
+			if _playable_rim_panel:
+				_playable_rim_panel.visible = _hand_playable_state
+				if _hand_playable_state:
+					var play_style := StyleBoxFlat.new()
+					play_style.draw_center = false
+					play_style.bg_color = Color(0.0, 0.0, 0.0, 0.0)
+					play_style.border_color = Color(0.95, 0.80, 0.42, 0.95)
+					play_style.set_border_width_all(3)
+					play_style.set_corner_radius_all(9)
+					_playable_rim_panel.add_theme_stylebox_override("panel", play_style)
+		else:
+			_frame_panel.modulate = Color.WHITE
+			if _playable_rim_panel:
+				_playable_rim_panel.visible = false
+
 
 func _create_effect_state_badge() -> void:
 	if not _frame_panel or _effect_state_badge:
@@ -1185,21 +1434,34 @@ func _refresh_effect_state_visual() -> void:
 	var stunned := get_status_amount("stunned")
 	var poison := get_status_amount("poison")
 	var protected_amount := get_status_amount("protected")
+	var accent := Color(0.76, 0.58, 0.27, 0.92)
 	if stunned > 0:
-		labels.append("S%d" % stunned)
-		tooltip_lines.append("Sersem %d" % stunned)
+		labels.append(tr("SER %d") % stunned)
+		tooltip_lines.append(tr("Sersemlemiş %d") % stunned)
+		accent = Color(0.45, 0.82, 1.0, 0.95)
 	if poison > 0:
-		labels.append("Z%d" % poison)
-		tooltip_lines.append("Zehir %d" % poison)
+		labels.append(tr("ZEH %d") % poison)
+		tooltip_lines.append(tr("Zehirli %d") % poison)
+		accent = Color(0.48, 0.88, 0.34, 0.95)
 	if protected_amount > 0:
-		labels.append("K%d" % protected_amount)
-		tooltip_lines.append("Koruma %d" % protected_amount)
+		labels.append(tr("KOR %d") % protected_amount)
+		tooltip_lines.append(tr("Korumalı %d") % protected_amount)
+		accent = Color(0.38, 0.78, 0.98, 0.95)
 	if not attached_skill_name.is_empty():
-		labels.append("BECERİ")
-		tooltip_lines.append("Bağlı Beceri: %s" % attached_skill_name)
-	_effect_state_label.text = " • ".join(labels)
+		labels.append(tr("BEC"))
+		tooltip_lines.append(tr("Attached Skill: %s") % tr(attached_skill_name))
+	if is_guard_available() and current_slot != null:
+		labels.append(tr("MUH"))
+		tooltip_lines.append(tr("Muhafız Aktif (Yapı hasarını üstlenir)"))
+	if has_trait("cloaked") and current_slot != null:
+		labels.append(tr("ÖRT"))
+		tooltip_lines.append(tr("Örtülü (Doğrudan düşman büyüsü hedefleyemez)"))
+	_effect_state_label.text = " ".join(labels)
 	_effect_state_badge.tooltip_text = "\n".join(tooltip_lines)
 	_effect_state_badge.visible = not labels.is_empty()
+	var badge_style := _effect_state_badge.get_theme_stylebox("panel") as StyleBoxFlat
+	if badge_style:
+		badge_style.border_color = accent
 	_refresh_runtime_state_rail_visibility()
 
 func _create_progression_badge() -> void:
@@ -1251,12 +1513,25 @@ func _refresh_progression_visual() -> void:
 	_progression_badge.visible = show_progression
 	if not show_progression:
 		return
-	_progression_label.text = "SV %d" % card_level
-	_progression_badge.tooltip_text = "Seviye %d%s • Tecrübe %d/%d" % [
-		card_level,
-		" • %s" % selected_branch_name if not selected_branch_name.is_empty() else "",
-		experience,
-		get_next_level_experience(),
+	var ready_to_upgrade := (
+		card_level < GameRules.MAX_CARD_LEVEL
+		and experience >= get_next_level_experience()
+		and get_next_level_experience() > 0
+	)
+	_progression_label.text = (tr("SV %d ▲") % card_level) if ready_to_upgrade else (tr("SV %d") % card_level)
+	_progression_label.add_theme_color_override(
+		"font_color",
+		Color(1.0, 0.95, 0.55) if ready_to_upgrade else Color(1.0, 0.90, 0.68)
+	)
+	var prog_style := _progression_badge.get_theme_stylebox("panel") as StyleBoxFlat
+	if prog_style:
+		prog_style.border_color = Color(1.0, 0.84, 0.28, 1.0) if ready_to_upgrade else Color(0.96, 0.72, 0.25, 0.92)
+		prog_style.bg_color = Color(0.24, 0.16, 0.03, 0.98) if ready_to_upgrade else Color(0.11, 0.075, 0.022, 0.96)
+	_progression_badge.tooltip_text = "%s%s • %s%s" % [
+		tr("Seviye %d") % card_level,
+		" • %s" % tr(selected_branch_name) if not selected_branch_name.is_empty() else "",
+		tr("Tecrübe %d/%d") % [experience, get_next_level_experience()],
+		(" • %s" % tr("TERFİ HAZIR!")) if ready_to_upgrade else "",
 	]
 	_refresh_runtime_state_rail_visibility()
 
@@ -1307,8 +1582,8 @@ func _refresh_combat_state_visual() -> void:
 	var show_exhausted := is_on_board and not is_headquarters() and combat_state == CombatState.EXHAUSTED
 	if _combat_state_badge:
 		_combat_state_badge.visible = show_exhausted
-	if _frame_panel:
-		_frame_panel.modulate = Color.WHITE
+	_refresh_playability_visual()
+	_refresh_identity_overlays()
 	_refresh_runtime_state_rail_visibility()
 
 func _layout_runtime_state_badges() -> void:
@@ -1478,7 +1753,7 @@ func _on_mouse_entered() -> void:
 		
 	_is_hovered = true
 	if not is_dragging and not _is_returning and not _is_snapping:
-		z_index = 100 if current_slot == null else 0
+		z_index = 100 if current_slot == null else 40
 
 func _get_resting_z_index() -> int:
 	if has_meta(TRANSIENT_Z_INDEX_META):
@@ -1490,7 +1765,7 @@ func _is_hand_face_down(gm: GameManager) -> bool:
 		return false
 	if not gm or current_slot != null or is_dragging:
 		return false
-	if MatchSetup.is_multiplayer_client():
+	if MatchSetup.is_multiplayer_player():
 		return owner_id != MatchSetup.human_player_id
 	if MatchSetup.is_ai_match():
 		return MatchSetup.is_ai_player(owner_id)
@@ -1706,12 +1981,14 @@ func _apply_base_text_styles() -> void:
 	# layer instead of adding a second relative Z offset.
 	if _gold_lbl:
 		_gold_lbl.z_index = 0
+		_gold_lbl.add_theme_color_override("font_color", Color(1.0, 0.96, 0.80))
+		_gold_lbl.add_theme_constant_override("outline_size", 3)
 	_set_label_font_size(_type_lbl, 13)
 	_set_label_font_size(_rarity_lbl, 12)
 	_set_label_font_size(_art_placeholder_lbl, 14)
 	_set_label_font_size(_name_lbl, 16)
 	_set_label_font_size(_desc_lbl, 11)
-	_set_label_font_size(_gold_lbl, 16)
+	_set_label_font_size(_gold_lbl, 17)
 	for title_label in [_type_lbl, _rarity_lbl, _name_lbl, _gold_lbl]:
 		if title_label:
 			title_label.add_theme_font_override("font", UI.DISPLAY_FONT)
@@ -1873,6 +2150,12 @@ func _update_ui() -> void:
 	if _gold_lbl:
 		_gold_lbl.text = str(energy_cost)
 	if _art_texture:
+		var focus := 0.14
+		if self is SettlementCard:
+			focus = 0.36
+		elif self is UpgradeCard or self is SpecialPowerCard or self is EffectCard:
+			focus = 0.45
+		_art_texture.set("vertical_focus", focus)
 		if card_art:
 			_art_texture.texture = null
 			_art_texture.set("source_texture", card_art)
@@ -1883,6 +2166,7 @@ func _update_ui() -> void:
 			_art_texture.visible = false
 	if _art_placeholder_lbl:
 		_art_placeholder_lbl.visible = card_art == null and not _has_template_background()
+	_refresh_identity_overlays()
 
 func _update_visuals() -> void:
 	if not is_inside_tree():
@@ -1895,6 +2179,7 @@ func _update_visuals() -> void:
 			_template_background.visible = true
 			_template_background.self_modulate = _get_template_rarity_tint()
 			_frame_panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+			_refresh_identity_overlays()
 			return
 		_template_background.visible = false
 		
@@ -1931,15 +2216,18 @@ func _update_visuals() -> void:
 		_frame_panel.add_theme_stylebox_override("panel", style_flat)
 
 func _get_template_rarity_tint() -> Color:
+	# Subtle forged-metal harmony so baked-in icons (red heart, blue shield,
+	# lightning) retain true vibrant colors while RarityTrimRim + RaritySeal
+	# carry the crisp rarity identity.
 	match rarity:
 		Rarity.COMMON:
-			return Color(0.80, 0.80, 0.76, 1.0)
+			return Color(0.92, 0.91, 0.89, 1.0)
 		Rarity.RARE:
-			return Color(0.55, 0.76, 1.00, 1.0)
+			return Color(0.84, 0.91, 1.00, 1.0)
 		Rarity.EPIC:
-			return Color(0.78, 0.54, 1.00, 1.0)
+			return Color(0.93, 0.84, 1.00, 1.0)
 		Rarity.LEGENDARY:
-			return Color(1.00, 0.72, 0.32, 1.0)
+			return Color(1.00, 0.91, 0.74, 1.0)
 
 	return Color.WHITE
 

@@ -6,12 +6,13 @@ signal profile_recovered(message: String)
 signal sync_state_changed(state: String, message: String)
 
 const DEFAULT_SAVE_PATH := "user://darwine_profile.json"
-const SAVE_VERSION := 4
+const SCENARIO_CATALOG := preload("res://scripts/scenario_catalog.gd")
+const SAVE_VERSION := 5
 const BACKUP_COUNT := 3
 const MAX_HISTORY := 30
 const MAX_PENDING_OPERATIONS := 256
 const SERVER_AUTHORITATIVE_PROFILE_KEYS := [
-	"level", "xp", "total_xp", "seals", "stats", "achievements", "missions", "competitive",
+	"level", "xp", "total_xp", "seals", "stats", "achievements", "missions", "campaigns", "competitive",
 ]
 
 const TITLE_COSMETICS := {
@@ -108,6 +109,10 @@ func get_last_load_status() -> String:
 
 
 func set_sync_provider(provider: ProfileSyncProvider) -> void:
+	if _sync_provider != provider and not _active_sync_request_id.is_empty():
+		if _sync_provider:
+			_sync_provider.cancel_sync(_active_sync_request_id)
+		_active_sync_request_id = ""
 	if _sync_provider and _sync_provider.sync_completed.is_connected(_on_provider_sync_completed):
 		_sync_provider.sync_completed.disconnect(_on_provider_sync_completed)
 	_sync_provider = provider
@@ -158,6 +163,114 @@ func get_stats() -> Dictionary:
 
 func get_history() -> Array:
 	return (_profile.get("history", []) as Array).duplicate(true)
+
+
+func get_scenario_state(campaign_id: String, scenario_id: String) -> Dictionary:
+	var campaigns := _profile.get("campaigns", {}) as Dictionary
+	var campaign_variant: Variant = campaigns.get(campaign_id, {})
+	if not campaign_variant is Dictionary:
+		return {}
+	var states_variant: Variant = (campaign_variant as Dictionary).get("scenario_states", {})
+	if not states_variant is Dictionary:
+		return {}
+	var state_variant: Variant = (states_variant as Dictionary).get(scenario_id, {})
+	return (state_variant as Dictionary).duplicate(true) if state_variant is Dictionary else {}
+
+
+func is_scenario_unlocked(campaign_id: String, scenario: Dictionary) -> bool:
+	var unlock_variant: Variant = scenario.get("unlock", {})
+	var requirements_variant: Variant = (
+		(unlock_variant as Dictionary).get("requires", [])
+		if unlock_variant is Dictionary
+		else []
+	)
+	if not requirements_variant is Array:
+		return false
+	for requirement_variant in requirements_variant as Array:
+		if not bool(get_scenario_state(campaign_id, str(requirement_variant)).get("completed", false)):
+			return false
+	return true
+
+
+func record_scenario_result(
+	campaign_id: String,
+	scenario: Dictionary,
+	evaluation: Dictionary,
+	match_id: String
+) -> Dictionary:
+	var scenario_id := str(scenario.get("id", "")).strip_edges()
+	var normalized_campaign_id := campaign_id.strip_edges()
+	var normalized_match_id := match_id.strip_edges()
+	if scenario_id.is_empty() or normalized_campaign_id.is_empty() or normalized_match_id.is_empty():
+		return {"recorded": false, "error": "Senaryo sonucu için kimlik bilgileri eksik."}
+	var catalog_result := SCENARIO_CATALOG.load_catalog()
+	if not bool(catalog_result.get("success", false)):
+		return {"recorded": false, "error": str(catalog_result.get("error", "Senaryo kataloğu yüklenemedi."))}
+	var canonical_campaign := SCENARIO_CATALOG.get_campaign()
+	if normalized_campaign_id != str(canonical_campaign.get("campaign_id", "")):
+		return {"recorded": false, "error": "Bilinmeyen kampanya kimliği: %s" % normalized_campaign_id}
+	var canonical_scenario := SCENARIO_CATALOG.get_scenario(scenario_id)
+	if canonical_scenario.is_empty():
+		return {"recorded": false, "error": "Bilinmeyen senaryo kimliği: %s" % scenario_id}
+	scenario = canonical_scenario
+	var campaigns := (_profile.get("campaigns", {}) as Dictionary).duplicate(true)
+	var campaign_variant: Variant = campaigns.get(normalized_campaign_id, {})
+	var campaign: Dictionary = (campaign_variant as Dictionary).duplicate(true) if campaign_variant is Dictionary else {}
+	var states_variant: Variant = campaign.get("scenario_states", {})
+	var states: Dictionary = (states_variant as Dictionary).duplicate(true) if states_variant is Dictionary else {}
+	var state_variant: Variant = states.get(scenario_id, {})
+	var state: Dictionary = (state_variant as Dictionary).duplicate(true) if state_variant is Dictionary else {}
+	if str(state.get("last_match_id", "")) == normalized_match_id:
+		return {"recorded": false, "duplicate": true, "state": state.duplicate(true)}
+
+	var was_completed := bool(state.get("completed", false))
+	var completed := bool(evaluation.get("completed", false))
+	var completed_now := completed and not was_completed
+	state["attempts"] = int(state.get("attempts", 0)) + 1
+	state["completed"] = was_completed or completed
+	state["last_match_id"] = normalized_match_id
+	state["last_played_at_utc"] = Time.get_datetime_string_from_system(true, true)
+	state["last_evaluation"] = evaluation.duplicate(true)
+	state["best_objectives_completed"] = maxi(
+		int(state.get("best_objectives_completed", 0)),
+		int(evaluation.get("completed_required_count", 0))
+	)
+	if completed_now:
+		state["completed_at_utc"] = Time.get_datetime_string_from_system(true, true)
+
+	var seals_before := int(_profile.get("seals", 0))
+	var new_cosmetics: Array[String] = []
+	var reward_variant: Variant = scenario.get("reward", {})
+	var reward: Dictionary = reward_variant as Dictionary if reward_variant is Dictionary else {}
+	if completed_now:
+		var reward_kind := str(reward.get("kind", ""))
+		if reward_kind == "seals":
+			_profile["seals"] = seals_before + maxi(0, int(reward.get("amount", 0)))
+		elif reward_kind in ["title", "banner"]:
+			_unlock_cosmetic(reward_kind, str(reward.get("id", "")), new_cosmetics)
+
+	states[scenario_id] = state
+	campaign["scenario_states"] = states
+	campaign["last_played_scenario_id"] = scenario_id
+	campaign["updated_at_unix"] = int(Time.get_unix_time_from_system())
+	campaigns[normalized_campaign_id] = campaign
+	_profile["campaigns"] = campaigns
+	_enqueue_operation("campaign_progress", {
+		"campaign_id": normalized_campaign_id,
+		"scenario_id": scenario_id,
+		"state": state.duplicate(true),
+	})
+	_save_profile()
+	var result := {
+		"recorded": true,
+		"completed": bool(state.get("completed", false)),
+		"completed_now": completed_now,
+		"seals_gained": int(_profile.get("seals", 0)) - seals_before,
+		"new_cosmetics": new_cosmetics,
+		"state": state.duplicate(true),
+	}
+	profile_changed.emit()
+	return result
 
 
 func get_level_progress() -> Dictionary:
@@ -358,6 +471,9 @@ func record_match(
 		"dominion_points": dominion_points,
 		"dominion_lane_wins": maxi(0, int(player_metrics.get("dominion_lane_wins", dominion_points))),
 		"mvp_card_name": str(player_metrics.get("mvp_card_name", "—")),
+		"match_analysis": (summary.get("match_analysis", {}) as Dictionary).duplicate(true) if summary.get("match_analysis", {}) is Dictionary else {},
+		"campaign_id": str(summary.get("scenario_context", {}).get("campaign_id", "")) if summary.get("scenario_context", {}) is Dictionary else "",
+		"scenario_id": str(summary.get("scenario_id", "")),
 		"xp_gained": xp_gained,
 	}
 	var history := _profile.get("history", []) as Array
@@ -429,6 +545,7 @@ func _default_profile() -> Dictionary:
 		},
 		"achievements": {},
 		"missions": {},
+		"campaigns": {},
 		"history": [],
 		"decks": {"updated_at_unix": 0, "active_deck_id": "", "decks": []},
 		"settings": {"updated_at_unix": 0, "values": {}},
@@ -500,6 +617,8 @@ func _merge_profile(saved: Dictionary) -> Dictionary:
 		merged["settings"] = _default_profile()["settings"]
 	if not merged.get("competitive", {}) is Dictionary:
 		merged["competitive"] = {}
+	if not merged.get("campaigns", {}) is Dictionary:
+		merged["campaigns"] = {}
 	if not merged.get("sync", {}) is Dictionary:
 		merged["sync"] = _default_profile()["sync"]
 	var sync_data := merged.get("sync", {}) as Dictionary
@@ -564,6 +683,10 @@ func _migrate_profile(saved: Dictionary) -> Dictionary:
 				migrated_history.append(entry)
 		migrated["history"] = migrated_history
 		migration_history.append({"from": source_version, "to": 4, "at_utc": Time.get_datetime_string_from_system(true, true)})
+		source_version = 4
+	if source_version < 5:
+		migrated["campaigns"] = migrated.get("campaigns", {}) if migrated.get("campaigns", {}) is Dictionary else {}
+		migration_history.append({"from": source_version, "to": 5, "at_utc": Time.get_datetime_string_from_system(true, true)})
 	migrated["migration_history"] = migration_history
 	migrated["save_version"] = SAVE_VERSION
 	return migrated

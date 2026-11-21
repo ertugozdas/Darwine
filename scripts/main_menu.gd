@@ -15,6 +15,9 @@ const DIFFICULTY_EMBLEM_SCRIPT := preload("res://scripts/difficulty_emblem.gd")
 const DECK_BUILDER_PANEL_SCRIPT := preload("res://scripts/deck_builder_panel.gd")
 const PROFILE_PANEL_SCRIPT := preload("res://scripts/profile_panel.gd")
 const RELEASE_NOTES_PANEL_SCRIPT := preload("res://scripts/release_notes_panel.gd")
+const SCENARIO_CAMPAIGN_PANEL_SCRIPT := preload("res://scripts/scenario_campaign_panel.gd")
+const SCENARIO_CATALOG := preload("res://scripts/scenario_catalog.gd")
+const SCENARIO_MATCH_CONFIGURATOR := preload("res://scripts/scenario_match_configurator.gd")
 const LANGUAGE_FLAG_ICON_SCRIPT := preload("res://scripts/language_flag_icon.gd")
 const UI := preload("res://scripts/dark_fantasy_ui.gd")
 const WINDOW_RESOLUTIONS := [
@@ -81,6 +84,7 @@ const CARD_CELL_SIZE := Vector2(218.0, 304.0)
 const CARD_GALLERY_SCALE := Vector2(0.82, 0.82)
 const MAIN_MENU_BUTTON_NAMES := [
 	"StartButton",
+	"CampaignButton",
 	"ContinueGameButton",
 	"OnlineButton",
 	"HowToButton",
@@ -127,6 +131,7 @@ var _selected_difficulty := MatchSetup.AIDifficulty.MEDIUM
 var _deck_builder_overlay: Control
 var _profile_overlay: CommanderProfilePanel
 var _release_notes_overlay: ReleaseNotesPanel
+var _scenario_campaign_overlay: Variant = null
 var _multiplayer_overlay: Control
 var _multiplayer_panel: PanelContainer
 var _multiplayer_name_input: LineEdit
@@ -152,6 +157,7 @@ var _multiplayer_copy_invite_button: Button
 var _multiplayer_leave_room_button: Button
 var _multiplayer_reconnect_button: Button
 var _steam_identity_label: Label
+var _steam_capabilities_label: Label
 var _steam_game_name_input: LineEdit
 var _steam_ruleset_option: OptionButton
 var _steam_card_pool_option: OptionButton
@@ -161,6 +167,8 @@ var _steam_lobby_list: VBoxContainer
 var _steam_host_button: Button
 var _steam_refresh_button: Button
 var _steam_invite_button: Button
+var _steam_friends_button: Button
+var _steam_achievements_button: Button
 var _steam_leave_button: Button
 var _steam_reconnect_button: Button
 var _settings_overlay: Control
@@ -247,6 +255,7 @@ func _ready() -> void:
 	_build_deck_builder_overlay()
 	_build_profile_overlay()
 	_build_release_notes_overlay()
+	_build_scenario_campaign_overlay()
 	_build_difficulty_overlay()
 	_build_multiplayer_overlay()
 	_build_settings_overlay()
@@ -282,7 +291,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not event.is_action_pressed("ui_cancel"):
 		return
 
-	if _how_to_overlay and _how_to_overlay.is_open():
+	if _scenario_campaign_overlay and _scenario_campaign_overlay.is_open():
+		_hide_scenario_campaign()
+	elif _how_to_overlay and _how_to_overlay.is_open():
 		_hide_how_to_play()
 	elif _deck_builder_overlay and _deck_builder_overlay.is_open():
 		_hide_deck_builder()
@@ -413,12 +424,9 @@ func _build_main_screen() -> void:
 	title.text = str(ProjectSettings.get_setting(APPLICATION_NAME_SETTING, "Darwine")).to_upper()
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 54)
-	title.add_theme_color_override("font_color", CREAM)
-	title.add_theme_color_override("font_outline_color", Color(0.09, 0.06, 0.025))
-	title.add_theme_constant_override("outline_size", 7)
+	title.add_theme_font_size_override("font_size", 58)
 	UI.style_title(title, CREAM)
-	title.add_theme_constant_override("outline_size", 7)
+	title.add_theme_constant_override("outline_size", 3)
 	content.add_child(title)
 
 	var title_rule := HSeparator.new()
@@ -438,6 +446,14 @@ func _build_main_screen() -> void:
 	var start_button := _make_menu_button("StartButton", "Savaşa Başla", "", GOLD_BRIGHT)
 	start_button.pressed.connect(_show_difficulty_selection)
 	menu_buttons.add_child(start_button)
+	var campaign_button := _make_menu_button(
+		"CampaignButton",
+		"KOMUTAN SEFERİ",
+		"",
+		Color(0.42, 0.66, 0.76)
+	)
+	campaign_button.pressed.connect(_show_scenario_campaign)
+	menu_buttons.add_child(campaign_button)
 
 	_continue_game_button = _make_menu_button("ContinueGameButton", "YÜKLE", "", Color(0.34, 0.68, 0.54))
 	_continue_game_button.pressed.connect(_on_continue_game_pressed)
@@ -478,9 +494,8 @@ func _build_main_screen() -> void:
 	profile_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	profile_button.pressed.connect(_show_profile)
 	profile_soundtrack_row.add_child(profile_button)
-	var soundtrack_button := _make_menu_button("SoundtrackButton", "Soundtrack", "", Color(0.72, 0.52, 0.24))
+	var soundtrack_button := _make_menu_button("SoundtrackButton", "Soundtrack", "", UI.BRASS)
 	soundtrack_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	soundtrack_button.add_theme_font_size_override("font_size", 15)
 	soundtrack_button.pressed.connect(_show_soundtrack)
 	profile_soundtrack_row.add_child(soundtrack_button)
 
@@ -531,14 +546,16 @@ func _build_mini_music_player() -> void:
 	_mini_music_panel.anchor_top = 1.0
 	_mini_music_panel.anchor_right = 1.0
 	_mini_music_panel.anchor_bottom = 1.0
-	_mini_music_panel.offset_left = -410.0
-	_mini_music_panel.offset_top = -150.0
+	_mini_music_panel.offset_left = -466.0
+	_mini_music_panel.offset_top = -194.0
 	_mini_music_panel.offset_right = -30.0
-	_mini_music_panel.offset_bottom = -30.0
-	_mini_music_panel.add_theme_stylebox_override(
-		"panel",
-		_make_stylebox(Color(0.018, 0.019, 0.023, 0.92), Color(GOLD, 0.48), 1, 8, 16.0)
-	)
+	_mini_music_panel.offset_bottom = -26.0
+	var mini_panel_style := UI.panel_style(Color(GOLD, 0.48), 28.0, 0.92)
+	mini_panel_style.content_margin_left = 32.0
+	mini_panel_style.content_margin_right = 32.0
+	mini_panel_style.content_margin_top = 24.0
+	mini_panel_style.content_margin_bottom = 28.0
+	_mini_music_panel.add_theme_stylebox_override("panel", mini_panel_style)
 	add_child(_mini_music_panel)
 
 	var content := VBoxContainer.new()
@@ -655,6 +672,14 @@ func _build_release_notes_overlay() -> void:
 	_release_notes_overlay = RELEASE_NOTES_PANEL_SCRIPT.new() as ReleaseNotesPanel
 	_release_notes_overlay.closed.connect(_focus_start_button)
 	add_child(_release_notes_overlay)
+
+
+func _build_scenario_campaign_overlay() -> void:
+	_scenario_campaign_overlay = SCENARIO_CAMPAIGN_PANEL_SCRIPT.new()
+	_scenario_campaign_overlay.closed.connect(_focus_start_button)
+	_scenario_campaign_overlay.scenario_requested.connect(_start_campaign_scenario)
+	add_child(_scenario_campaign_overlay)
+
 
 func _build_difficulty_overlay() -> void:
 	_difficulty_overlay = _make_modal_overlay("DifficultyOverlay", Color(0.004, 0.006, 0.009, 0.82))
@@ -1699,7 +1724,15 @@ func _build_multiplayer_steam_panel(parent: Control) -> void:
 	_steam_identity_label.name = "SteamIdentityStatus"
 	_steam_identity_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_steam_identity_label.add_theme_color_override("font_color", Color(0.58, 0.82, 1.0))
-	identity_plate.add_child(_steam_identity_label)
+	var identity_copy := VBoxContainer.new()
+	identity_copy.add_theme_constant_override("separation", 1)
+	identity_plate.add_child(identity_copy)
+	identity_copy.add_child(_steam_identity_label)
+	_steam_capabilities_label = _make_muted_label("Shift+Tab ve Steam başarımları denetleniyor…", 10)
+	_steam_capabilities_label.name = "SteamCapabilitiesStatus"
+	_steam_capabilities_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_steam_capabilities_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	identity_copy.add_child(_steam_capabilities_label)
 
 	var settings := GridContainer.new()
 	settings.name = "SteamRoomSettings"
@@ -1776,11 +1809,29 @@ func _build_multiplayer_steam_panel(parent: Control) -> void:
 	_steam_reconnect_button.pressed.connect(_reconnect_multiplayer)
 	actions.add_child(_steam_reconnect_button)
 
+	var steam_tools := HBoxContainer.new()
+	steam_tools.name = "SteamOverlayActions"
+	steam_tools.add_theme_constant_override("separation", 8)
+	_multiplayer_steam_panel.add_child(steam_tools)
+	_steam_friends_button = _make_action_button(
+		"SteamFriendsOverlayButton", "SHIFT+TAB / ARKADAŞLAR", Color(0.34, 0.56, 0.84), true
+	)
+	_steam_friends_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_steam_friends_button.pressed.connect(_open_steam_friends)
+	steam_tools.add_child(_steam_friends_button)
+	_steam_achievements_button = _make_action_button(
+		"SteamAchievementsButton", "STEAM BAŞARIMLARI", Color(0.72, 0.54, 0.22), true
+	)
+	_steam_achievements_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_steam_achievements_button.pressed.connect(_open_steam_achievements)
+	steam_tools.add_child(_steam_achievements_button)
+
 	var list_title := _make_muted_label("AÇIK DARWINE LOBİLERİ", 10)
 	list_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_multiplayer_steam_panel.add_child(list_title)
 	var scroll := ScrollContainer.new()
 	scroll.name = "SteamLobbyScroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.custom_minimum_size.y = 178.0
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_multiplayer_steam_panel.add_child(scroll)
@@ -2560,10 +2611,8 @@ func _build_detail_overlay() -> void:
 	info_box.add_child(_detail_type_label)
 
 	_detail_name_label = Label.new()
-	_detail_name_label.add_theme_font_size_override("font_size", 32)
-	_detail_name_label.add_theme_color_override("font_color", CREAM)
-	_detail_name_label.add_theme_color_override("font_outline_color", Color.BLACK)
-	_detail_name_label.add_theme_constant_override("outline_size", 4)
+	_detail_name_label.add_theme_font_size_override("font_size", 30)
+	UI.style_title(_detail_name_label, CREAM)
 	_detail_name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info_box.add_child(_detail_name_label)
 
@@ -2987,17 +3036,7 @@ func _resume_active_match(snapshot: Dictionary, slot_id := "", slot_name := "") 
 	var resolved_slot_name := slot_name if not slot_name.is_empty() else str(snapshot.get("save_slot_name", snapshot.get("match_name", "Kayıt")))
 	if not MatchSetup.configure_from_snapshot(snapshot, resolved_slot_id, resolved_slot_name):
 		return
-	_transitioning = true
-	_fade_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
-	var tween := create_tween()
-	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	tween.tween_property(_fade_overlay, "color", Color(0.006, 0.007, 0.01, 1.0), 0.28)
-	await tween.finished
-	var error := SceneTransition.transition_to(GAME_SCENE)
-	if error != OK:
-		_transitioning = false
-		_fade_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		push_error("Aktif maç yüklenemedi: %s" % error_string(error))
+	await _transition_to_battlefield(0.28, "Aktif maç yüklenemedi")
 
 
 func _build_quit_overlay() -> void:
@@ -3325,6 +3364,7 @@ func _make_menu_button(node_name: String, label_text: String, _index_text: Strin
 	button.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.86))
 	var primary := node_name == "StartButton"
 	UI.style_button(button, accent, destructive, false, primary)
+	button.add_theme_color_override("font_color", UI.BRASS_BRIGHT if primary else UI.PARCHMENT.lightened(0.05))
 	button.mouse_entered.connect(_on_menu_button_hover.bind(button, true))
 	button.mouse_exited.connect(_on_menu_button_hover.bind(button, false))
 	return button
@@ -3482,6 +3522,17 @@ func _show_difficulty_selection() -> void:
 	_reveal_control(_difficulty_overlay, 0.18)
 	_refresh_card_pool_mode_copy()
 	call_deferred("_focus_game_setup_form")
+
+
+func _show_scenario_campaign() -> void:
+	if _transitioning or not _scenario_campaign_overlay:
+		return
+	_scenario_campaign_overlay.open_panel()
+
+
+func _hide_scenario_campaign() -> void:
+	if _scenario_campaign_overlay:
+		_scenario_campaign_overlay.close_panel()
 
 
 func _show_how_to_play() -> void:
@@ -3783,6 +3834,18 @@ func _invite_steam_friends() -> void:
 		_on_network_status_changed("Steam arkadaş daveti yalnızca etkin bir lobide açılabilir.", true)
 
 
+func _open_steam_friends() -> void:
+	var steam_manager := get_node_or_null("/root/SteamManager")
+	if not steam_manager or int(steam_manager.call("open_friends_overlay")) != OK:
+		_on_network_status_changed("Steam arkadaş listesi açılamadı.", true)
+
+
+func _open_steam_achievements() -> void:
+	var steam_manager := get_node_or_null("/root/SteamManager")
+	if not steam_manager or int(steam_manager.call("open_achievements_overlay")) != OK:
+		_on_network_status_changed("Steam başarımları açılamadı.", true)
+
+
 func _leave_steam_lobby() -> void:
 	var network_manager := get_node_or_null("/root/NetworkManager")
 	if network_manager:
@@ -3813,10 +3876,18 @@ func _refresh_steam_availability() -> void:
 		and network_manager.is_using_steam_transport()
 		and int(network_manager.get("state")) != 0
 	)
+	var overlay_status := (
+		str(steam_manager.call("get_overlay_status_text"))
+		if available and steam_manager.has_method("get_overlay_status_text")
+		else "Steam Overlay kullanılamıyor"
+	)
+	var stats_ready: bool = available and bool(steam_manager.get("are_stats_ready"))
+	var development_app: bool = available and int(steam_manager.get("app_id")) == 480
 	_steam_identity_label.text = (
-		"Steam bağlı • %s • App ID %d" % [
+		"Steam bağlı • %s • App ID %d%s" % [
 			str(steam_manager.get("persona_name")),
 			int(steam_manager.get("app_id")),
+			" (Spacewar test)" if development_app else "",
 		]
 		if available
 		else str(steam_manager.get("last_status")) if steam_manager and not str(steam_manager.get("last_status")).is_empty()
@@ -3826,9 +3897,27 @@ func _refresh_steam_availability() -> void:
 		"font_color",
 		Color(0.58, 0.86, 1.0) if available else Color(0.96, 0.58, 0.42)
 	)
+	if _steam_capabilities_label:
+		_steam_capabilities_label.text = (
+			"%s • Başarımlar: %s%s" % [
+				overlay_status,
+				"eşitlendi" if stats_ready else "yükleniyor",
+				" • Test App ID'de Darwine başarımları açılmaz" if development_app else "",
+			]
+			if available
+			else "Shift+Tab, arkadaş daveti ve Steam başarımları için Steam'i açıp oyunu yeniden başlat."
+		)
+		_steam_capabilities_label.add_theme_color_override(
+			"font_color",
+			Color(0.64, 0.82, 0.94) if available else Color(0.88, 0.60, 0.45)
+		)
 	_steam_host_button.disabled = not available or steam_engaged
 	_steam_refresh_button.disabled = not available or steam_engaged
 	_steam_invite_button.disabled = not in_lobby
+	if _steam_friends_button:
+		_steam_friends_button.disabled = not available
+	if _steam_achievements_button:
+		_steam_achievements_button.disabled = not available
 	_steam_leave_button.visible = in_lobby
 	_set_steam_settings_locked(steam_engaged)
 
@@ -3978,6 +4067,12 @@ func _connect_steam_manager_ui() -> void:
 	var identity_callback := Callable(self, "_on_steam_identity_changed")
 	if not steam_manager.is_connected("identity_changed", identity_callback):
 		steam_manager.connect("identity_changed", identity_callback)
+	var overlay_callback := Callable(self, "_on_steam_overlay_state_changed")
+	if not steam_manager.is_connected("overlay_state_changed", overlay_callback):
+		steam_manager.connect("overlay_state_changed", overlay_callback)
+	var stats_callback := Callable(self, "_on_steam_stats_ready_changed")
+	if not steam_manager.is_connected("stats_ready_changed", stats_callback):
+		steam_manager.connect("stats_ready_changed", stats_callback)
 	_refresh_steam_availability()
 
 
@@ -3994,6 +4089,14 @@ func _on_steam_status_changed(message: String, is_error: bool) -> void:
 
 
 func _on_steam_identity_changed(_steam_id: int, _persona_name: String) -> void:
+	_refresh_steam_availability()
+
+
+func _on_steam_overlay_state_changed(_is_enabled: bool, _is_active: bool) -> void:
+	_refresh_steam_availability()
+
+
+func _on_steam_stats_ready_changed(_is_ready: bool) -> void:
 	_refresh_steam_availability()
 
 
@@ -4160,18 +4263,54 @@ func _start_game(difficulty: int = -1) -> void:
 		)
 	if _difficulty_overlay:
 		_difficulty_overlay.visible = false
+	await _transition_to_battlefield(0.34, "Oyun yükleme ekranı açılamadı")
+
+
+func _start_campaign_scenario(scenario_id: String) -> void:
+	if _transitioning:
+		return
+	var load_result := SCENARIO_CATALOG.load_catalog()
+	if not bool(load_result.get("success", false)):
+		push_error("Komutan Seferi açılamadı: %s" % str(load_result.get("error", "katalog hatası")))
+		return
+	var campaign := SCENARIO_CATALOG.get_campaign()
+	var scenario := SCENARIO_CATALOG.get_scenario(scenario_id)
+	if scenario.is_empty():
+		push_error("Komutan Seferi senaryosu bulunamadı: %s" % scenario_id)
+		return
+	var profile_manager := get_node_or_null("/root/ProfileManager")
+	if profile_manager and profile_manager.has_method("is_scenario_unlocked"):
+		if not profile_manager.is_scenario_unlocked(str(campaign.get("campaign_id", "")), scenario):
+			push_warning("Kilitli Komutan Seferi senaryosu başlatılmadı: %s" % scenario_id)
+			if _scenario_campaign_overlay:
+				_scenario_campaign_overlay.refresh()
+			return
+	var configuration := SCENARIO_MATCH_CONFIGURATOR.configure(
+		scenario_id,
+		get_node_or_null("/root/DeckManager")
+	)
+	if not bool(configuration.get("success", false)):
+		push_error("Komutan Seferi kurulamadı: %s" % str(configuration.get("error", "kurulum hatası")))
+		return
+	if _scenario_campaign_overlay:
+		_scenario_campaign_overlay.close_panel()
+	await _transition_to_battlefield(0.34, "Komutan Seferi yüklenemedi")
+
+
+func _transition_to_battlefield(duration: float, error_prefix: String) -> void:
 	_transitioning = true
 	_fade_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	var tween := create_tween()
 	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	tween.tween_property(_fade_overlay, "color", Color(0.006, 0.007, 0.01, 1.0), 0.34)
+	tween.tween_property(_fade_overlay, "color", Color(0.006, 0.007, 0.01, 1.0), duration)
 	await tween.finished
 	var error := SceneTransition.transition_to(GAME_SCENE)
-	if error != OK:
-		push_error("Oyun yükleme ekranı açılamadı: %s" % error_string(error))
-		_transitioning = false
-		_fade_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		create_tween().tween_property(_fade_overlay, "color", Color(0.006, 0.007, 0.01, 0.0), 0.25)
+	if error == OK:
+		return
+	push_error("%s: %s" % [error_prefix, error_string(error)])
+	_transitioning = false
+	_fade_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	create_tween().tween_property(_fade_overlay, "color", Color(0.006, 0.007, 0.01, 0.0), 0.25)
 
 
 func _show_settings() -> void:
@@ -4808,7 +4947,7 @@ func _on_viewport_size_changed() -> void:
 		return
 	var viewport_size := get_viewport_rect().size
 	var panel_width := minf(410.0, viewport_size.x - 48.0)
-	var panel_height := minf(620.0, viewport_size.y - 36.0)
+	var panel_height := minf(680.0, viewport_size.y - 24.0)
 	var left_margin := 56.0 if viewport_size.x >= 900.0 else 24.0
 	_main_shell.anchor_left = 0.0
 	_main_shell.anchor_top = 0.5

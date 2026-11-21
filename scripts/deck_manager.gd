@@ -7,6 +7,7 @@ const DEFAULT_STORAGE_PATH := "user://darwine_decks.json"
 const SAVE_VERSION := 1
 const MAX_SAVED_DECKS := 8
 const STARTER_DECK_ORDER := ["muhafiz_hatti", "firtina_hucumu", "runik_kontrol"]
+const DECK_ADVISOR := preload("res://scripts/deck_advisor.gd")
 
 var storage_path := DEFAULT_STORAGE_PATH
 var _decks: Dictionary = {}
@@ -226,6 +227,10 @@ func get_deck_stats(cards_variant: Variant) -> Dictionary:
 	return stats
 
 
+func get_deck_advice(cards_variant: Variant) -> Dictionary:
+	return DECK_ADVISOR.analyze(cards_variant)
+
+
 func reset_to_starters() -> void:
 	_decks.clear()
 	_active_deck_id = ""
@@ -238,6 +243,89 @@ func reset_to_starters() -> void:
 	active_deck_changed.emit(_active_deck_id)
 
 
+const REMOVED_CARD_MIGRATIONS := {
+	"heroes/sihirbaz": "heroes/alev_duellocusu",
+	"heroes/ucbaslikopek": "heroes/demir_dev",
+	"heroes/buyucu": "heroes/kan_buyucusu",
+	"heroes/ayaz_muhafizi": "heroes/sovalye",
+	"heroes/bosluk_gezgini": "heroes/dus_yuruyeni",
+	"heroes/firtina_avcisi": "heroes/okcu",
+	"heroes/run_muhafizi": "heroes/can_muhafizi",
+	"heroes/savas_rahibi": "heroes/peri",
+	"heroes/gladiator": "heroes/sovalye",
+	"heroes/ates_izcisi": "heroes/firtina_nakkasi",
+	"heroes/firtina_denizanasi": "heroes/firtina_nakkasi",
+	"heroes/kehribar_govde": "heroes/dikenli_golem",
+	"heroes/prizma_guvesi": "heroes/ay_isigi_anemonu",
+	"heroes/kemik_mercan": "heroes/ruh_fenercisi",
+	"heroes/demir_tac_muhafizi": "heroes/can_muhafizi",
+	"heroes/gece_oburu": "heroes/yutucu_orkide",
+	"heroes/zaman_yutan_yengec": "heroes/zaman_hirsizi",
+	"heroes/gece_avcisi": "heroes/yanki_celladi",
+	"heroes/yankili_yayci": "heroes/kiriktac_yeminlisi",
+	"heroes/kizil_anka": "heroes/kan_buyucusu",
+	"heroes/simsek_suvarisi": "heroes/troll",
+	"settlements/kereste_fabrikasi": "settlements/altin_madeni",
+	"settlements/ay_muhru_siginagi": "settlements/runik_siginak",
+	"settlements/bakir_gozetleme_kulesi": "settlements/okcu_kulesi",
+	"settlements/gozcu_feneri": "settlements/okcu_kulesi",
+	"settlements/firtina_kulesi": "settlements/balista",
+	"settlements/prizma_balista": "settlements/balista",
+	"settlements/kisla": "settlements/savas_davulu",
+	"settlements/kizil_firin": "settlements/savas_davulu",
+	"settlements/ruh_pinari": "settlements/sifa_cadiri",
+	"settlements/barikat": "settlements/tas_sur",
+	"upgrades/hafif_zirh": "upgrades/celik_kalkan",
+	"upgrades/gozetleme_duzenegi": "upgrades/guclendirilmis_temel",
+	"upgrades/run_bagi": "upgrades/kusatma_muhimmati",
+	"upgrades/ejderha_yemini": "upgrades/kusatma_muhimmati",
+	"upgrades/goktasi_kaplama": "upgrades/kusatma_muhimmati",
+	"upgrades/muhafiz_yemini": "upgrades/celik_kalkan",
+	"special_powers/kor_kuresi": "special_powers/yildirim",
+	"special_powers/onarim_ritueli": "special_powers/kutsal_isik",
+	"special_powers/zincir_yildirim": "special_powers/alev_dalgasi",
+	"special_powers/zaman_yarigi": "special_powers/buz_muhru",
+	"special_powers/prizma_perdesi": "special_powers/koruyucu_muhur",
+}
+
+
+func _migrate_legacy_card_refs(raw_cards: Variant) -> Array:
+	var lookup := _playable_lookup()
+	var counts := {}
+	var migrated: Array = []
+	for ref in _sanitize_card_refs(raw_cards):
+		var card_type := str(ref.get("card_type", ""))
+		var card_id := str(ref.get("card_id", ""))
+		var key := _card_key(card_type, card_id)
+		if not lookup.has(key) and REMOVED_CARD_MIGRATIONS.has(key):
+			var target_key := str(REMOVED_CARD_MIGRATIONS[key])
+			var parts := target_key.split("/", false, 1)
+			if parts.size() == 2 and lookup.has(target_key):
+				card_type = parts[0]
+				card_id = parts[1]
+				key = target_key
+		if not lookup.has(key):
+			continue
+		if int(counts.get(key, 0)) < GameRules.MAX_CARD_COPIES:
+			counts[key] = int(counts.get(key, 0)) + 1
+			migrated.append({"card_type": card_type, "card_id": card_id})
+	if migrated.size() > 0 and migrated.size() < GameRules.DECK_SIZE:
+		for candidate_variant in CardDatabase.get_playable_card_refs():
+			if migrated.size() >= GameRules.DECK_SIZE:
+				break
+			if not candidate_variant is Dictionary:
+				continue
+			var candidate := candidate_variant as Dictionary
+			var c_key := _card_key(str(candidate.get("card_type", "")), str(candidate.get("card_id", "")))
+			while migrated.size() < GameRules.DECK_SIZE and int(counts.get(c_key, 0)) < GameRules.MAX_CARD_COPIES:
+				counts[c_key] = int(counts.get(c_key, 0)) + 1
+				migrated.append({
+					"card_type": str(candidate.get("card_type", "")),
+					"card_id": str(candidate.get("card_id", "")),
+				})
+	return migrated
+
+
 func _load_payload(payload: Dictionary) -> void:
 	_updated_at_unix = int(payload.get("updated_at_unix", 0))
 	var rows_variant: Variant = payload.get("decks", [])
@@ -247,7 +335,14 @@ func _load_payload(payload: Dictionary) -> void:
 				continue
 			var row := row_variant as Dictionary
 			var deck_id := str(row.get("id", "")).strip_edges()
-			var validation := validate_deck_cards(row.get("cards", []))
+			var is_starter := bool(row.get("is_starter", deck_id in STARTER_DECK_ORDER))
+			var candidate_cards: Variant = row.get("cards", [])
+			var validation := validate_deck_cards(candidate_cards)
+			if not bool(validation.get("success", false)):
+				if is_starter and deck_id in STARTER_DECK_ORDER:
+					continue
+				candidate_cards = _migrate_legacy_card_refs(candidate_cards)
+				validation = validate_deck_cards(candidate_cards)
 			if deck_id.is_empty() or not bool(validation.get("success", false)):
 				continue
 			_decks[deck_id] = {
@@ -255,8 +350,8 @@ func _load_payload(payload: Dictionary) -> void:
 				"name": _sanitize_name(str(row.get("name", "")), "İsimsiz Deste"),
 				"archetype": str(row.get("archetype", "custom")),
 				"description": str(row.get("description", "")),
-				"is_starter": bool(row.get("is_starter", deck_id in STARTER_DECK_ORDER)),
-				"cards": _sanitize_card_refs(row.get("cards", [])),
+				"is_starter": is_starter,
+				"cards": _sanitize_card_refs(candidate_cards),
 				"updated_at": str(row.get("updated_at", "")),
 			}
 	_active_deck_id = str(payload.get("active_deck_id", ""))
@@ -275,34 +370,35 @@ func _starter_deck_definitions() -> Dictionary:
 			"muhafiz_hatti", "Muhafız Hattı", "Savunma",
 			"Dayanıklı ön hat, iyileştirme ve koruma ile rakibin kaynaklarını tüketir.",
 			[
-				"heroes/sovalye", "heroes/ayaz_muhafizi", "heroes/run_muhafizi",
-				"heroes/peri", "heroes/savas_rahibi", "heroes/kan_buyucusu",
-				"settlements/tas_sur", "settlements/runik_siginak",
-				"settlements/sifa_cadiri", "settlements/ruh_pinari",
+				"heroes/sovalye", "heroes/can_muhafizi", "heroes/dikenli_golem",
+				"heroes/peri", "heroes/ruh_fenercisi", "heroes/demir_dev",
+				"heroes/demirkok_samani",
+				"settlements/tas_sur", "settlements/runik_siginak", "settlements/sifa_cadiri",
 				"special_powers/kutsal_isik", "special_powers/koruyucu_muhur",
-				"special_powers/onarim_ritueli", "upgrades/celik_kalkan",
-				"upgrades/guclendirilmis_temel",
+				"upgrades/celik_kalkan", "upgrades/guclendirilmis_temel",
+				"upgrades/kadim_kabuk",
 			]
 		),
 		"firtina_hucumu": _starter(
 			"firtina_hucumu", "Fırtına Hücumu", "Tempo",
 			"Hızlı Kahramanlar, alan hasarı ve Kuşatma ile açık koridoru erken cezalandırır.",
 			[
-				"heroes/capulcu", "heroes/golge_suikastcisi", "heroes/simsek_suvarisi",
-				"heroes/troll", "heroes/mancinik_ustasi", "heroes/alev_duellocusu",
-				"settlements/balista", "settlements/firtina_kulesi", "settlements/savas_davulu",
-				"special_powers/yildirim", "special_powers/alev_dalgasi",
-				"special_powers/zincir_yildirim", "special_powers/kivilcim",
-				"upgrades/kusatma_muhimmati", "upgrades/ejderha_yemini",
+				"heroes/capulcu", "heroes/kiriktac_yeminlisi", "heroes/golge_suikastcisi",
+				"heroes/alev_duellocusu", "heroes/firtina_nakkasi", "heroes/troll",
+				"heroes/mancinik_ustasi",
+				"settlements/savas_davulu", "settlements/balista", "settlements/golgeli_gecit",
+				"special_powers/kivilcim", "special_powers/alev_dalgasi",
+				"special_powers/yildirim",
+				"upgrades/hiz_egitimi", "upgrades/kusatma_muhimmati",
 			]
 		),
 		"runik_kontrol": _starter(
 			"runik_kontrol", "Rünik Kontrol", "Kontrol",
 			"Menzil, Zehir ve el düzenleme ile rakibin planını bozup geç oyunu yönetir.",
 			[
-				"heroes/okcu", "heroes/firtina_avcisi", "heroes/buyucu",
-				"heroes/sihirbaz", "heroes/kan_buyucusu", "heroes/ucbaslikopek",
-				"settlements/simyaci_kulesi", "settlements/gozcu_feneri", "settlements/altin_madeni",
+				"heroes/okcu", "heroes/kan_buyucusu", "heroes/sis_dokuyucu",
+				"heroes/ates_semenderi", "heroes/kristal_basilisk", "heroes/gunesiz_kralice",
+				"settlements/altin_madeni", "settlements/okcu_kulesi", "settlements/simyaci_kulesi",
 				"special_powers/zehir_yagmuru", "special_powers/buz_muhru",
 				"special_powers/yer_degistiren_ruzgar", "special_powers/taktik_degisim",
 				"special_powers/ikmal_emri", "upgrades/keskin_nisancilik",

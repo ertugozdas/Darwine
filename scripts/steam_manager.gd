@@ -3,6 +3,8 @@ extends Node
 signal steam_ready_changed(is_ready: bool)
 signal status_changed(message: String, is_error: bool)
 signal identity_changed(steam_id: int, persona_name: String)
+signal overlay_state_changed(is_enabled: bool, is_active: bool)
+signal stats_ready_changed(is_ready: bool)
 signal lobby_created(lobby_id: int)
 signal lobby_joined(lobby_id: int, owner_steam_id: int, metadata: Dictionary)
 signal lobby_left(lobby_id: int)
@@ -12,6 +14,7 @@ signal join_requested(lobby_id: int, inviter_steam_id: int)
 signal p2p_session_requested(remote_steam_id: int)
 signal p2p_session_failed(remote_steam_id: int, message: String)
 signal stats_stored(success: bool)
+signal achievement_progressed(api_name: String, current_progress: int, max_progress: int, unlocked: bool)
 
 const INVITE_CODE := preload("res://scripts/invite_code.gd")
 const STEAM_PROFILE_PROVIDER := preload("res://scripts/steam_profile_sync_provider.gd")
@@ -22,6 +25,7 @@ const CLOUD_PROFILES_SETTING := "steam/integration/cloud_profiles"
 const DEVELOPMENT_APP_ID := 480
 const RESULT_OK := 1
 const STEAM_INIT_OK := 0
+const EMBED_CALLBACKS := false
 const CHAT_ROOM_ENTER_SUCCESS := 1
 const LOBBY_TYPE_FRIENDS_ONLY := 1
 const LOBBY_TYPE_PUBLIC := 2
@@ -30,6 +34,11 @@ const MAX_LOBBIES := 50
 const MAX_CLOUD_JSON_BYTES := 2 * 1024 * 1024
 const CLOUD_PROFILE_FILE := "darwine_profile_v1.json"
 const CLOUD_PROFILE_BACKUP_FILE := "darwine_profile_v1.backup.json"
+const OVERLAY_POLL_INTERVAL_SECONDS := 1.0
+const OVERLAY_WARMUP_SECONDS := 15.0
+const RICH_PRESENCE_MENU_TOKEN := "#Status_MainMenu"
+const RICH_PRESENCE_LOBBY_TOKEN := "#Status_InLobby"
+const RICH_PRESENCE_MATCH_TOKEN := "#Status_InMatch"
 const LOBBY_METADATA_KEYS := [
 	"darwine_game",
 	"protocol",
@@ -68,12 +77,21 @@ var current_lobby_owner_id := 0
 var current_lobby_members: Array[int] = []
 var last_status := ""
 var last_status_is_error := false
+var is_overlay_enabled := false
+var is_overlay_active := false
+var are_stats_ready := false
+var last_stats_sync: Dictionary = {}
 
 var _steam: Object = null
 var _pending_lobby_metadata: Dictionary = {}
 var _lobby_cache: Array[Dictionary] = []
 var _launch_lobby_id := 0
 var _profile_sync_provider: ProfileSyncProvider = null
+var _overlay_poll_elapsed := 0.0
+var _overlay_warmup_remaining := OVERLAY_WARMUP_SECONDS
+var _stats_sync_queued := false
+var _progress_notification_queued := false
+var _last_achievement_progress: Dictionary = {}
 
 
 func _ready() -> void:
@@ -87,9 +105,27 @@ func _ready() -> void:
 	_initialize_steam()
 
 
+func _process(delta: float) -> void:
+	if not is_initialized or not is_instance_valid(_steam):
+		return
+	# GodotSteam callbacks are driven explicitly. This keeps lobby, invite,
+	# overlay, P2P and stats callbacks alive in menus and while paused.
+	if _steam.has_method("run_callbacks"):
+		_steam.call("run_callbacks")
+	if not is_available:
+		return
+	_overlay_poll_elapsed += delta
+	_overlay_warmup_remaining = maxf(0.0, _overlay_warmup_remaining - delta)
+	if _overlay_poll_elapsed >= OVERLAY_POLL_INTERVAL_SECONDS:
+		_overlay_poll_elapsed = 0.0
+		_refresh_overlay_state()
+
+
 func _exit_tree() -> void:
 	if is_available and is_instance_valid(_steam):
 		_steam.call("clearRichPresence")
+	if is_initialized and is_instance_valid(_steam) and _steam.has_method("shutdown"):
+		_steam.call("shutdown")
 
 
 func get_steam_singleton() -> Object:
@@ -215,7 +251,32 @@ func invite_friends() -> Error:
 	if not is_available or current_lobby_id <= 0:
 		return ERR_UNAVAILABLE
 	_steam.call("activateGameOverlayInviteDialog", current_lobby_id)
+	_set_status(
+		"Steam arkadaş daveti açıldı. Pencere görünmezse Shift+Tab ile Steam arayüzünü aç."
+		if is_overlay_enabled
+		else "Steam daveti istendi; arayüz hazırlanıyor. Birkaç saniye sonra Shift+Tab'i dene."
+	)
 	return OK
+
+
+func open_friends_overlay() -> Error:
+	return _open_overlay("Friends", "Steam arkadaş listesi açıldı.")
+
+
+func open_achievements_overlay() -> Error:
+	return _open_overlay("Achievements", "Steam başarımları açıldı.")
+
+
+func get_overlay_status_text() -> String:
+	if not is_available:
+		return "Steam çevrimdışı"
+	if is_overlay_active:
+		return "Shift+Tab açık"
+	if is_overlay_enabled:
+		return "Shift+Tab hazır"
+	if _overlay_warmup_remaining > 0.0:
+		return "Shift+Tab hazırlanıyor"
+	return "Steam Overlay kapalı"
 
 
 func update_lobby_state(state_name: String) -> void:
@@ -234,12 +295,15 @@ func set_rich_presence_menu() -> void:
 		return
 	_steam.call("clearRichPresence")
 	_steam.call("setRichPresence", "status", "Ana Menü")
+	_set_rich_presence_display(RICH_PRESENCE_MENU_TOKEN)
 
 
 func set_rich_presence_lobby() -> void:
 	if not is_available or current_lobby_id <= 0:
 		return
+	_steam.call("clearRichPresence")
 	_steam.call("setRichPresence", "status", "Steam P2P Lobisinde")
+	_set_rich_presence_display(RICH_PRESENCE_LOBBY_TOKEN)
 	_steam.call("setRichPresence", "connect", "+connect_lobby %d" % current_lobby_id)
 	_steam.call("setRichPresence", "steam_player_group", str(current_lobby_id))
 	_steam.call("setRichPresence", "steam_player_group_size", str(current_lobby_members.size()))
@@ -248,14 +312,24 @@ func set_rich_presence_lobby() -> void:
 func set_rich_presence_match(ruleset_name: String, match_name: String) -> void:
 	if not is_available:
 		return
+	_steam.call("clearRichPresence")
 	_steam.call("setRichPresence", "status", "%s • %s" % [ruleset_name, match_name])
+	_steam.call("setRichPresence", "darwine_mode", ruleset_name.left(64))
+	_steam.call("setRichPresence", "darwine_match", match_name.left(64))
+	_set_rich_presence_display(RICH_PRESENCE_MATCH_TOKEN)
 	if current_lobby_id > 0:
 		_steam.call("setRichPresence", "connect", "+connect_lobby %d" % current_lobby_id)
+		_steam.call("setRichPresence", "steam_player_group", str(current_lobby_id))
+		_steam.call("setRichPresence", "steam_player_group_size", str(current_lobby_members.size()))
 
 
-func sync_profile_stats() -> Dictionary:
+func sync_profile_stats(report_progress: bool = false) -> Dictionary:
 	if not is_available:
 		return {"success": false, "unavailable": true}
+	if not are_stats_ready:
+		_stats_sync_queued = true
+		_progress_notification_queued = _progress_notification_queued or report_progress
+		return {"success": false, "queued": true, "stats_ready": false}
 	var profile_manager := get_node_or_null("/root/ProfileManager")
 	if not profile_manager:
 		return {"success": false, "error": "Profil yöneticisi bulunamadı."}
@@ -264,28 +338,62 @@ func sync_profile_stats() -> Dictionary:
 	var failed_stats: Array[String] = []
 	for profile_key in STEAM_STATS:
 		var steam_stat_name := str(STEAM_STATS[profile_key])
-		if bool(_steam.call("setStatInt", steam_stat_name, int(stats.get(profile_key, 0)))):
-			changed = true
-		else:
+		var steam_value := int(_steam.call("getStatInt", steam_stat_name))
+		var merged_value := maxi(steam_value, int(stats.get(profile_key, 0)))
+		if merged_value <= steam_value:
+			continue
+		if not bool(_steam.call("setStatInt", steam_stat_name, merged_value)):
 			failed_stats.append(steam_stat_name)
+			continue
+		changed = true
 	var unlocked: Array[String] = []
+	var failed_achievements: Array[String] = []
 	for entry_variant in profile_manager.get_achievement_entries():
 		var entry := entry_variant as Dictionary
 		var achievement_id := str(entry.get("id", ""))
-		if not bool(entry.get("completed", false)) or not STEAM_ACHIEVEMENTS.has(achievement_id):
+		if not STEAM_ACHIEVEMENTS.has(achievement_id):
 			continue
 		var api_name := str(STEAM_ACHIEVEMENTS[achievement_id])
-		if bool(_steam.call("setAchievement", api_name)):
-			changed = true
-			unlocked.append(api_name)
+		var progress := maxi(0, int(entry.get("progress", 0)))
+		var target := maxi(1, int(entry.get("target", 1)))
+		var completed := bool(entry.get("completed", false))
+		var achievement_state_variant: Variant = _steam.call("getAchievement", api_name)
+		var achievement_state := (
+			achievement_state_variant as Dictionary
+			if achievement_state_variant is Dictionary
+			else {}
+		)
+		var already_unlocked := (
+			bool(achievement_state.get("ret", false))
+			and bool(achievement_state.get("achieved", false))
+		)
+		if completed and not already_unlocked:
+			if bool(_steam.call("setAchievement", api_name)):
+				changed = true
+				unlocked.append(api_name)
+			else:
+				failed_achievements.append(api_name)
+		elif (
+			report_progress
+			and progress > int(_last_achievement_progress.get(api_name, 0))
+			and progress > 0
+			and progress < target
+			and _steam.has_method("indicateAchievementProgress")
+		):
+			_steam.call("indicateAchievementProgress", api_name, progress, target)
+		_last_achievement_progress[api_name] = progress
 	if changed:
 		_steam.call("storeStats")
-	return {
-		"success": failed_stats.is_empty(),
+	_stats_sync_queued = false
+	_progress_notification_queued = false
+	last_stats_sync = {
+		"success": failed_stats.is_empty() and failed_achievements.is_empty(),
 		"stored": changed,
 		"failed_stats": failed_stats,
+		"failed_achievements": failed_achievements,
 		"achievements": unlocked,
 	}
+	return last_stats_sync.duplicate(true)
 
 
 func read_cloud_json(file_name: String) -> Dictionary:
@@ -338,7 +446,18 @@ func _initialize_steam() -> void:
 	app_id = int(ProjectSettings.get_setting(APP_ID_SETTING, DEVELOPMENT_APP_ID))
 	if app_id <= 0:
 		app_id = DEVELOPMENT_APP_ID
-	var response_variant: Variant = _steam.call("steamInitEx", app_id, true)
+	# Restart through the Steam client only for the real product. App ID 480 is
+	# Spacewar and relaunching it would start Valve's test app instead of Darwine.
+	if (
+		app_id != DEVELOPMENT_APP_ID
+		and not OS.has_feature("editor")
+		and _steam.has_method("restartAppIfNecessary")
+		and bool(_steam.call("restartAppIfNecessary", app_id))
+	):
+		_set_status("Darwine Steam üzerinden yeniden başlatılıyor…")
+		get_tree().quit()
+		return
+	var response_variant: Variant = _steam.call("steamInitEx", app_id, EMBED_CALLBACKS)
 	if not response_variant is Dictionary:
 		_set_status("Steam başlatma yanıtı geçersiz; çevrimdışı devam ediliyor.", true)
 		steam_ready_changed.emit(false)
@@ -362,8 +481,11 @@ func _initialize_steam() -> void:
 	_set_status("Steam bağlı: %s" % persona_name)
 	steam_ready_changed.emit(true)
 	identity_changed.emit(steam_id, persona_name)
+	_overlay_warmup_remaining = OVERLAY_WARMUP_SECONDS
+	_refresh_overlay_state(true)
 	set_rich_presence_menu()
 	_bind_profile_services()
+	_request_user_stats()
 	_launch_lobby_id = _parse_launch_lobby_id()
 	if _launch_lobby_id > 0:
 		call_deferred("_emit_launch_join_request")
@@ -376,9 +498,13 @@ func _connect_steam_signals() -> void:
 	_connect_steam_signal("lobby_chat_update", _on_lobby_chat_update)
 	_connect_steam_signal("lobby_data_update", _on_lobby_data_update)
 	_connect_steam_signal("join_requested", _on_join_requested)
+	_connect_steam_signal("join_game_requested", _on_join_game_requested)
+	_connect_steam_signal("overlay_toggled", _on_overlay_toggled)
 	_connect_steam_signal("network_messages_session_request", _on_network_session_request)
 	_connect_steam_signal("network_messages_session_failed", _on_network_session_failed)
+	_connect_steam_signal("user_stats_received", _on_user_stats_received)
 	_connect_steam_signal("user_stats_stored", _on_user_stats_stored)
+	_connect_steam_signal("user_achievement_stored", _on_user_achievement_stored)
 
 
 func _connect_steam_signal(signal_name: StringName, callback: Callable) -> void:
@@ -453,8 +579,10 @@ func _on_lobby_chat_update(
 	set_rich_presence_lobby()
 
 
-func _on_lobby_data_update(success: bool, lobby_id: int, _member_id: int) -> void:
-	if success and lobby_id == current_lobby_id:
+func _on_lobby_data_update(success: bool, lobby_id: int, member_id: int) -> void:
+	# LobbyDataUpdate also reports per-member metadata changes. Only re-emit the
+	# joined lobby contract when the room metadata itself changed.
+	if success and lobby_id == current_lobby_id and member_id == lobby_id:
 		lobby_joined.emit(lobby_id, int(_steam.call("getLobbyOwner", lobby_id)), get_lobby_metadata(lobby_id))
 
 
@@ -462,6 +590,21 @@ func _on_join_requested(lobby_id: int, inviter_steam_id: int) -> void:
 	if lobby_id <= 0:
 		return
 	join_requested.emit(lobby_id, inviter_steam_id)
+
+
+func _on_join_game_requested(friend_steam_id: int, connect_string: String) -> void:
+	var lobby_id := _parse_connect_lobby_id(connect_string)
+	if lobby_id <= 0:
+		_set_status("Steam arkadaş katılma bilgisi geçersiz veya bu sürümle uyumsuz.", true)
+		return
+	join_requested.emit(lobby_id, friend_steam_id)
+
+
+func _on_overlay_toggled(active: bool, _user_initiated: bool, callback_app_id: int) -> void:
+	if callback_app_id > 0 and callback_app_id != app_id:
+		return
+	is_overlay_active = active
+	_refresh_overlay_state(true)
 
 
 func _on_network_session_request(remote_steam_id: int) -> void:
@@ -485,8 +628,91 @@ func _on_network_session_failed(
 	p2p_session_failed.emit(remote_steam_id, message)
 
 
+func _on_user_stats_received(_game_id: int, result: int, user_id: int) -> void:
+	if user_id != steam_id:
+		return
+	var was_ready := are_stats_ready
+	are_stats_ready = result == RESULT_OK
+	if are_stats_ready != was_ready or not are_stats_ready:
+		stats_ready_changed.emit(are_stats_ready)
+	if not are_stats_ready:
+		_set_status("Steam başarımları ve istatistikleri yüklenemedi (sonuç %d)." % result, true)
+		return
+	call_deferred("_flush_queued_stats_sync")
+
+
 func _on_user_stats_stored(_game_id: int, result: int) -> void:
-	stats_stored.emit(result == RESULT_OK)
+	var success := result == RESULT_OK
+	stats_stored.emit(success)
+	if not success:
+		_set_status("Steam başarım/istatistik kaydı başarısız oldu (sonuç %d)." % result, true)
+
+
+func _on_user_achievement_stored(
+	_game_id: int,
+	_group_achievement: bool,
+	achievement_name: String,
+	current_progress: int,
+	max_progress: int
+) -> void:
+	achievement_progressed.emit(
+		achievement_name,
+		current_progress,
+		max_progress,
+		not _group_achievement or max_progress <= 0 or current_progress >= max_progress
+	)
+
+
+func _request_user_stats() -> void:
+	are_stats_ready = false
+	stats_ready_changed.emit(false)
+	if not is_available or not _steam.has_method("requestUserStats"):
+		return
+	# Steamworks SDK 1.61+ removed RequestCurrentStats from GodotSteam. The
+	# equivalent local-user request still emits user_stats_received.
+	_steam.call("requestUserStats", steam_id)
+
+
+func _flush_queued_stats_sync() -> void:
+	if not are_stats_ready:
+		return
+	var report_progress := _progress_notification_queued
+	_stats_sync_queued = false
+	_progress_notification_queued = false
+	sync_profile_stats(report_progress)
+
+
+func _refresh_overlay_state(force_emit: bool = false) -> void:
+	if not is_available or not is_instance_valid(_steam) or not _steam.has_method("isOverlayEnabled"):
+		if force_emit or is_overlay_enabled or is_overlay_active:
+			is_overlay_enabled = false
+			is_overlay_active = false
+			overlay_state_changed.emit(false, false)
+		return
+	var enabled := bool(_steam.call("isOverlayEnabled"))
+	if force_emit or enabled != is_overlay_enabled:
+		is_overlay_enabled = enabled
+		overlay_state_changed.emit(is_overlay_enabled, is_overlay_active)
+
+
+func _open_overlay(dialog_name: String, success_message: String) -> Error:
+	if not is_available or not is_instance_valid(_steam) or not _steam.has_method("activateGameOverlay"):
+		return ERR_UNAVAILABLE
+	_steam.call("activateGameOverlay", dialog_name)
+	_set_status(
+		success_message
+		if is_overlay_enabled
+		else "Steam Overlay hazırlanıyor. Birkaç saniye sonra Shift+Tab'i yeniden dene."
+	)
+	return OK
+
+
+func _set_rich_presence_display(token: String) -> void:
+	# Spacewar does not contain Darwine localization tokens. Keep the legacy
+	# status string visible during App ID 480 tests and use localized tokens in
+	# the real Steamworks application.
+	if app_id != DEVELOPMENT_APP_ID:
+		_steam.call("setRichPresence", "steam_display", token)
 
 
 func _bind_profile_services() -> void:
@@ -507,7 +733,7 @@ func _bind_profile_services() -> void:
 
 
 func _on_profile_match_recorded(_result: Dictionary) -> void:
-	sync_profile_stats()
+	sync_profile_stats(true)
 	var profile_manager := get_node_or_null("/root/ProfileManager")
 	if profile_manager and _profile_sync_provider and _profile_sync_provider.is_available():
 		profile_manager.begin_online_sync()
@@ -544,12 +770,26 @@ func _owns_current_lobby() -> bool:
 
 func _parse_launch_lobby_id() -> int:
 	var arguments := Array(OS.get_cmdline_args())
+	for user_argument in OS.get_cmdline_user_args():
+		if user_argument not in arguments:
+			arguments.append(user_argument)
 	for index in range(arguments.size()):
-		var argument := str(arguments[index])
+		var argument := str(arguments[index]).strip_edges().trim_prefix("\"").trim_suffix("\"")
 		if argument == "+connect_lobby" and index + 1 < arguments.size():
-			return int(arguments[index + 1])
-		if argument.begins_with("+connect_lobby=") or argument.begins_with("--connect-lobby="):
-			return int(argument.get_slice("=", 1))
+			return _parse_connect_lobby_id("+connect_lobby %s" % str(arguments[index + 1]))
+		var lobby_id := _parse_connect_lobby_id(argument)
+		if lobby_id > 0:
+			return lobby_id
+	return 0
+
+
+func _parse_connect_lobby_id(connect_string: String) -> int:
+	var normalized := connect_string.strip_edges().trim_prefix("\"").trim_suffix("\"")
+	for prefix in ["+connect_lobby=", "--connect-lobby="]:
+		if normalized.begins_with(prefix):
+			return maxi(0, int(normalized.trim_prefix(prefix).strip_edges()))
+	if normalized.begins_with("+connect_lobby "):
+		return maxi(0, int(normalized.trim_prefix("+connect_lobby ").strip_edges().get_slice(" ", 0)))
 	return 0
 
 

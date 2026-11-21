@@ -48,6 +48,7 @@ var _turn_timer_running := false
 
 
 func _ready() -> void:
+	theme = UI.create_theme()
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_build_ui()
 	_refresh_text()
@@ -399,10 +400,10 @@ func _apply_dominion_display(label: Label, player_id: int, accent: Color) -> voi
 
 func _get_turn_text(own_id: int) -> String:
 	if _active_player_id == own_id:
-		return "SIRA SENDE"
+		return tr("SIRA SENDE")
 	if MatchSetup.is_ai_player(_active_player_id):
-		return "RAKİP HAMLESİ"
-	return "SIRA RAKİPTE"
+		return tr("RAKİP HAMLESİ")
+	return tr("SIRA RAKİPTE")
 
 
 func _refresh_glow() -> void:

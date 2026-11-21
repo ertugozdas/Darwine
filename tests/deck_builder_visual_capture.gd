@@ -1,6 +1,6 @@
 extends SceneTree
 
-const OUTPUT_PATH := "/tmp/tdm_deck_builder_1280x720.png"
+const OUTPUT_PATH := "user://tdm_deck_builder_1280x720.png"
 
 
 func _initialize() -> void:
@@ -42,5 +42,5 @@ func _run() -> void:
 		push_error("Deste Atölyesi görseli kaydedilemedi")
 		quit(1)
 		return
-	print("DECK_BUILDER_VISUAL_CAPTURE_OK: %s" % OUTPUT_PATH)
+	print("DECK_BUILDER_VISUAL_CAPTURE_OK: %s" % ProjectSettings.globalize_path(OUTPUT_PATH))
 	quit(0)

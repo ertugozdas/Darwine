@@ -141,7 +141,7 @@ func _build_interface() -> void:
 
 	var eyebrow := Label.new()
 	eyebrow.name = "HowToEyebrow"
-	eyebrow.text = "DARWINE  •  KOMUTANIN EL KİTABI"
+	eyebrow.text = tr("DARWINE  •  KOMUTANIN EL KİTABI")
 	eyebrow.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	eyebrow.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	eyebrow.add_theme_font_size_override("font_size", 10)
@@ -256,7 +256,7 @@ func _build_modes_page() -> Control:
 	oath.add_theme_stylebox_override("panel", UI.inset_style(Color(0.075, 0.052, 0.020, 0.92), GOLD_BRIGHT, 4))
 	content.add_child(oath)
 	var oath_label := Label.new()
-	oath_label.text = "ORTAK KURAL  •  Hakimiyet oynarken de rakip Merkezi yıkmak savaşı anında kazandırır. Modu, maç kurulumundaki OYUN MODU mühründen seçersin."
+	oath_label.text = tr("ORTAK KURAL  •  Hakimiyet oynarken de rakip Merkezi yıkmak savaşı anında kazandırır. Modu, maç kurulumundaki OYUN MODU mühründen seçersin.")
 	oath_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	oath_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	oath_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -343,7 +343,7 @@ func _build_card_types_page() -> Control:
 	effect_note.add_theme_stylebox_override("panel", UI.inset_style(Color(0.035, 0.045, 0.070, 0.96), Color(0.46, 0.58, 0.82), 4))
 	content.add_child(effect_note)
 	var effect_copy := Label.new()
-	effect_copy.text = "ETKİ KARTI  •  Mulligan'dan önce üç tekliften birini seçersin. Eline girmez ve Enerji harcamaz; maç boyunca pasif kalır. Rakibin seçimi gizlidir."
+	effect_copy.text = tr("ETKİ KARTI  •  Mulligan'dan önce üç tekliften birini seçersin. Eline girmez ve Enerji harcamaz; maç boyunca pasif kalır. Rakibin seçimi gizlidir.")
 	effect_copy.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	effect_copy.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	effect_copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -386,7 +386,7 @@ func _build_turn_page() -> Control:
 	note.add_theme_stylebox_override("panel", UI.inset_style(Color(0.07, 0.045, 0.018, 0.86), GOLD, 4))
 	content.add_child(note)
 	var note_label := Label.new()
-	note_label.text = "EL SINIRI 8  •  TURDA 1 KART ÇEKİLİR  •  ENERJİ TAŞINMAZ  •  ÇATIŞMAYA GEÇ → TURU BİTİR"
+	note_label.text = tr("EL SINIRI 8  •  TURDA 1 KART ÇEKİLİR  •  ENERJİ TAŞINMAZ  •  ÇATIŞMAYA GEÇ → TURU BİTİR")
 	note_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	note_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note_label.add_theme_font_size_override("font_size", 12)
@@ -563,7 +563,7 @@ func _build_controls_page() -> Control:
 	warning.add_theme_stylebox_override("panel", UI.inset_style(Color(0.070, 0.030, 0.026, 0.92), Color(0.82, 0.35, 0.25), 4))
 	content.add_child(warning)
 	var warning_label := Label.new()
-	warning_label.text = "ÇEVRİMİÇİ MAÇLAR  •  Adil otorite için yerel kaydet/yükle kapalıdır. Bağlantı koparsa oda yeniden bağlanma akışını kullanır."
+	warning_label.text = tr("ÇEVRİMİÇİ MAÇLAR  •  Adil otorite için yerel kaydet/yükle kapalıdır. Bağlantı koparsa oda yeniden bağlanma akışını kullanır.")
 	warning_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	warning_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	warning_label.add_theme_font_size_override("font_size", 12)
@@ -626,12 +626,12 @@ func _make_mode_panel(
 	copy.add_theme_constant_override("separation", 9)
 	row.add_child(copy)
 	var title := Label.new()
-	title.text = title_text
+	title.text = tr(title_text)
 	title.add_theme_font_size_override("font_size", 23)
 	UI.style_title(title, accent.lightened(0.24))
 	copy.add_child(title)
 	var goal := Label.new()
-	goal.text = goal_text
+	goal.text = tr(goal_text)
 	goal.add_theme_font_override("font", UI.BODY_BOLD_FONT)
 	goal.add_theme_font_size_override("font_size", 14)
 	goal.add_theme_color_override("font_color", GOLD_BRIGHT)
@@ -640,14 +640,14 @@ func _make_mode_panel(
 	rule.add_theme_stylebox_override("separator", UI.line_style(Color(accent, 0.48), 1))
 	copy.add_child(rule)
 	var body := Label.new()
-	body.text = description
+	body.text = tr(description)
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body.add_theme_font_size_override("font_size", 14)
 	body.add_theme_color_override("font_color", CREAM)
 	copy.add_child(body)
 	var keyword_label := Label.new()
-	keyword_label.text = keywords
+	keyword_label.text = tr(keywords)
 	keyword_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	keyword_label.add_theme_font_size_override("font_size", 11)
 	keyword_label.add_theme_color_override("font_color", accent.lightened(0.28))
@@ -663,13 +663,13 @@ func _make_command_row(command: String, description: String) -> PanelContainer:
 	copy.add_theme_constant_override("separation", 2)
 	panel.add_child(copy)
 	var title := Label.new()
-	title.text = command
+	title.text = tr(command)
 	title.add_theme_font_override("font", UI.BODY_BOLD_FONT)
 	title.add_theme_font_size_override("font_size", 11)
 	title.add_theme_color_override("font_color", GOLD_BRIGHT)
 	copy.add_child(title)
 	var body := Label.new()
-	body.text = description
+	body.text = tr(description)
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.add_theme_font_size_override("font_size", 11)
 	body.add_theme_color_override("font_color", MUTED)
@@ -713,14 +713,14 @@ func _make_art_panel(path: String, heading: String, description: String, minimum
 	art_backdrop.add_child(art)
 
 	var title := Label.new()
-	title.text = heading
+	title.text = tr(heading)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 15)
 	UI.style_title(title, accent.lightened(0.24))
 	content.add_child(title)
 
 	var body := Label.new()
-	body.text = description
+	body.text = tr(description)
 	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	body.vertical_alignment = VERTICAL_ALIGNMENT_TOP
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -759,14 +759,14 @@ func _make_phase_panel(index_text: String, heading: String, art_path: String, de
 	number.add_theme_color_override("font_color", accent.lightened(0.25))
 	content.add_child(number)
 	var title := Label.new()
-	title.text = heading
+	title.text = tr(heading)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 20)
 	UI.style_title(title, accent.lightened(0.25))
 	content.add_child(title)
 	content.add_child(_make_art_strip(art_path, 205.0))
 	var body := Label.new()
-	body.text = description
+	body.text = tr(description)
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	body.add_theme_font_size_override("font_size", 13)
@@ -810,7 +810,7 @@ func _make_lane_slot(text_value: String, accent: Color) -> PanelContainer:
 	style.content_margin_bottom = 4.0
 	slot.add_theme_stylebox_override("panel", style)
 	var label := Label.new()
-	label.text = text_value
+	label.text = tr(text_value)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.add_theme_font_size_override("font_size", 10)
@@ -833,7 +833,7 @@ func _make_priority_step(number: String, text_value: String, accent: Color) -> P
 	index_label.add_theme_color_override("font_color", accent.lightened(0.24))
 	box.add_child(index_label)
 	var label := Label.new()
-	label.text = text_value
+	label.text = tr(text_value)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.add_theme_font_size_override("font_size", 12)
 	UI.style_title(label, CREAM)
@@ -858,7 +858,7 @@ func _make_info_panel(title_text: String, accent: Color) -> PanelContainer:
 	box.add_theme_constant_override("separation", 7)
 	panel.add_child(box)
 	var title := Label.new()
-	title.text = title_text
+	title.text = tr(title_text)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 16)
 	UI.style_title(title, accent.lightened(0.24))
@@ -872,12 +872,12 @@ func _make_status_row(title_text: String, description: String, accent: Color) ->
 	var box := VBoxContainer.new()
 	panel.add_child(box)
 	var title := Label.new()
-	title.text = title_text
+	title.text = tr(title_text)
 	title.add_theme_font_size_override("font_size", 11)
 	title.add_theme_color_override("font_color", accent.lightened(0.25))
 	box.add_child(title)
 	var body := Label.new()
-	body.text = description
+	body.text = tr(description)
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.add_theme_font_size_override("font_size", 11)
 	body.add_theme_color_override("font_color", MUTED)
@@ -889,7 +889,7 @@ func _make_keyword_chip(text_value: String) -> PanelContainer:
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", UI.inset_style(Color(0.035, 0.075, 0.073, 0.90), Color(0.28, 0.67, 0.61), 3))
 	var label := Label.new()
-	label.text = text_value
+	label.text = tr(text_value)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.add_theme_font_size_override("font_size", 10)
 	label.add_theme_color_override("font_color", Color(0.64, 0.91, 0.84))
@@ -899,7 +899,7 @@ func _make_keyword_chip(text_value: String) -> PanelContainer:
 
 func _make_section_title(text_value: String) -> Label:
 	var title := Label.new()
-	title.text = text_value
+	title.text = tr(text_value)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 18)
 	UI.style_title(title, GOLD_BRIGHT)
@@ -930,7 +930,7 @@ func _translate_rich_lines(bbcode: String) -> String:
 func _make_button(node_name: String, text_value: String, primary: bool) -> Button:
 	var button := Button.new()
 	button.name = node_name
-	button.text = text_value
+	button.text = tr(text_value)
 	button.custom_minimum_size = Vector2(150.0, 42.0)
 	button.add_theme_font_size_override("font_size", 13)
 	UI.style_button(button, GOLD, false, true, primary)

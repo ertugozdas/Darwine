@@ -15,5 +15,3 @@ dest_files=["res://localization/tutorial.en.translation", "res://localization/tu
 
 compress=1
 delimiter=0
-unescape_keys=false
-unescape_translations=true
